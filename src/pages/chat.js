@@ -169,6 +169,11 @@ export function renderChat(container) {
         streamContent = "";
         statusEl.innerHTML = "";
         store.setBusy(connId, false);
+        // Reload full history on final/aborted to pick up messages from other users
+        // (their sent messages aren't broadcast, only visible in history)
+        if (client && (payload.state === "final" || payload.state === "aborted")) {
+          loadHistory(client, messagesEl);
+        }
       }
     });
 
