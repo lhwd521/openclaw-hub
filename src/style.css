@@ -537,6 +537,18 @@ textarea {
   margin-top: 6px;
 }
 
+.message-file-badge {
+  display: inline-block;
+  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 10px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
 .chat-input-area {
   padding: 16px 24px;
   border-top: 1px solid var(--border);
@@ -607,11 +619,16 @@ textarea {
 
 .file-preview-item {
   position: relative;
-  width: 60px;
-  height: 60px;
+  width: 80px;
+  height: 80px;
   border-radius: var(--radius-sm);
   overflow: hidden;
   border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-tertiary);
 }
 
 .file-preview-item img {
@@ -620,21 +637,47 @@ textarea {
   object-fit: cover;
 }
 
+.file-preview-doc {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+  text-align: center;
+  padding: 4px;
+}
+
+.file-preview-name {
+  font-size: 9px;
+  color: var(--text-secondary);
+  text-align: center;
+  padding: 2px 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  width: 100%;
+}
+
 .file-preview-item .remove-file {
   position: absolute;
   top: 2px;
   right: 2px;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   background: rgba(0, 0, 0, 0.7);
   border: none;
   border-radius: 50%;
   color: #fff;
-  font-size: 10px;
+  font-size: 14px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
+  line-height: 1;
+}
+
+.file-extract-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 4px 0;
 }
 
 /* --- Status Page --- */

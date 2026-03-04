@@ -71,6 +71,9 @@ const translations = {
     "chat.assistant": "助手",
     "chat.system": "系统",
     "chat.attachment": "[附件]",
+    "chat.extracting": "正在提取文件内容...",
+    "chat.extract_fail": "文件提取失败：",
+    "chat.unsupported_file": "不支持的文件类型",
 
     // Status
     "status.title": "状态",
@@ -195,6 +198,9 @@ const translations = {
     "chat.assistant": "Assistant",
     "chat.system": "System",
     "chat.attachment": "[attachment]",
+    "chat.extracting": "Extracting file content...",
+    "chat.extract_fail": "File extraction failed: ",
+    "chat.unsupported_file": "Unsupported file type",
 
     // Status
     "status.title": "Status",

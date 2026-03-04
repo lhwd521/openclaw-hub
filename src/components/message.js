@@ -41,11 +41,20 @@ export function renderMessage(role, content, attachments) {
   // Render inline attachments (from user upload)
   if (attachments && attachments.length > 0) {
     for (const att of attachments) {
-      const img = document.createElement("img");
-      img.className = "message-image";
-      img.src = `data:${att.mimeType};base64,${att.content}`;
-      img.alt = att.fileName || "image";
-      bubble.appendChild(img);
+      if (att.type === "image") {
+        const img = document.createElement("img");
+        img.className = "message-image";
+        img.src = `data:${att.mimeType};base64,${att.content}`;
+        img.alt = att.fileName || "image";
+        bubble.appendChild(img);
+      } else if (att.type === "text") {
+        // Document attachment - show file name badge
+        const badge = document.createElement("div");
+        badge.className = "message-file-badge";
+        const ext = att.fileName.split(".").pop().toUpperCase();
+        badge.textContent = `📄 ${ext}: ${att.fileName}`;
+        bubble.appendChild(badge);
+      }
     }
   }
 

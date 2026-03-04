@@ -225,13 +225,25 @@ export function renderChat(container) {
     if (!text && pendingAttachments.length === 0) return;
     if (!client || !isConnected) return;
 
-    const displayText = text || t("chat.attachment");
+    // Separate images and text-based files
+    const imageAttachments = pendingAttachments.filter(f => f.type === "image");
+    const textFiles = pendingAttachments.filter(f => f.type === "text");
+
+    // Build message text: original text + extracted text from documents
+    let messageText = text;
+    for (const file of textFiles) {
+      if (file.text) {
+        messageText += `\n\n[文件: ${file.fileName}]\n${file.text}`;
+      }
+    }
+
+    const displayText = messageText || t("chat.attachment");
 
     const attachments = [...pendingAttachments];
     pendingAttachments = [];
     if (fileUpload.clear) fileUpload.clear();
 
-    appendMessage(messagesEl, "user", displayText, attachments.length > 0 ? attachments : undefined);
+    appendMessage(messagesEl, "user", displayText, imageAttachments.length > 0 ? imageAttachments : undefined);
     scrollToBottom(messagesEl);
 
     inputEl.value = "";
@@ -239,7 +251,8 @@ export function renderChat(container) {
 
     try {
       store.setBusy(connId, true);
-      await client.sendMessage("main", text, attachments);
+      // Send only images as attachments, text content is in messageText
+      await client.sendMessage("main", messageText, imageAttachments);
     } catch (err) {
       showToast(t("chat.send_fail") + err.message, "error");
       store.setBusy(connId, false);
