@@ -108,26 +108,11 @@ install_cloudflared() {
   echo "[OK] cloudflared installed"
 }
 
-install_jq() {
-  if command -v jq &>/dev/null; then
-    return
-  fi
-  echo "[*] Installing jq..."
-  if command -v apt-get &>/dev/null; then
-    sudo apt-get install -y jq
-  elif command -v dnf &>/dev/null; then
-    sudo dnf install -y jq
-  elif command -v yum &>/dev/null; then
-    sudo yum install -y jq
-  fi
-}
-
 echo "[1/4] Installing dependencies..."
 install_nodejs
 install_pnpm
 install_openclaw
 install_cloudflared
-install_jq
 echo ""
 
 # --- 2. Generate gateway token ---
@@ -144,11 +129,30 @@ else
   ORIGINS="[\"$VERCEL_ORIGIN\"]"
 fi
 
+# Check if gateway is already running on the target port
+EXISTING_GW=$(ss -tlnp 2>/dev/null | grep ":${OPENCLAW_PORT} " || true)
+if [ -n "$EXISTING_GW" ]; then
+  echo "[!] Port ${OPENCLAW_PORT} is already in use by an existing gateway."
+  echo "    Will update config for existing gateway instead of starting a new one."
+  SKIP_GW_SERVICE=true
+
+  # Read existing token if available
+  if [ -f "$CONFIG_FILE" ]; then
+    OLD_TOKEN=$(grep -o '"token": *"[^"]*"' "$CONFIG_FILE" | head -1 | sed 's/.*: *"//;s/"//' || true)
+    if [ -n "$OLD_TOKEN" ]; then
+      GATEWAY_TOKEN="$OLD_TOKEN"
+      echo "    Keeping existing token."
+    fi
+  fi
+else
+  SKIP_GW_SERVICE=false
+fi
+
 cat > "$CONFIG_FILE" << JSONEOF
 {
   "gateway": {
+    "mode": "local",
     "port": ${OPENCLAW_PORT},
-    "bindMode": "loopback",
     "auth": {
       "mode": "token",
       "token": "${GATEWAY_TOKEN}"
@@ -168,14 +172,15 @@ echo ""
 
 # --- 3. Create systemd services ---
 
-echo "[3/4] Setting up systemd services..."
+echo "[3/4] Setting up services..."
 
-OPENCLAW_BIN=$(command -v openclaw)
 CLOUDFLARED_BIN=$(command -v cloudflared)
 RUN_USER=$(whoami)
 
-# openclaw-gateway.service
-sudo tee /etc/systemd/system/openclaw-gateway.service > /dev/null << SVCEOF
+if [ "$SKIP_GW_SERVICE" = false ]; then
+  OPENCLAW_BIN=$(command -v openclaw)
+
+  sudo tee /etc/systemd/system/openclaw-gateway.service > /dev/null << SVCEOF
 [Unit]
 Description=OpenClaw Gateway
 After=network.target
@@ -185,7 +190,9 @@ Type=simple
 User=${RUN_USER}
 ExecStart=${OPENCLAW_BIN} gateway
 Restart=on-failure
-RestartSec=5
+RestartSec=10
+StartLimitIntervalSec=300
+StartLimitBurst=5
 Environment=HOME=${HOME}
 WorkingDirectory=${HOME}
 
@@ -193,19 +200,41 @@ WorkingDirectory=${HOME}
 WantedBy=multi-user.target
 SVCEOF
 
-# cloudflared-tunnel.service
+  sudo systemctl daemon-reload
+  sudo systemctl enable openclaw-gateway.service
+  sudo systemctl restart openclaw-gateway.service
+  sleep 3
+  echo "[OK] Gateway service started"
+else
+  # Restart existing gateway to pick up new config
+  echo "[*] Restarting existing gateway to load new config..."
+  openclaw gateway stop 2>/dev/null || true
+  sleep 2
+  nohup openclaw gateway > /tmp/openclaw-gateway.log 2>&1 &
+  sleep 3
+
+  # Verify it came back up
+  if ss -tlnp 2>/dev/null | grep -q ":${OPENCLAW_PORT} "; then
+    echo "[OK] Existing gateway restarted with new config"
+  else
+    echo "[!] Gateway did not restart. Check: cat /tmp/openclaw-gateway.log"
+  fi
+fi
+
+# cloudflared-tunnel.service with restart limits to avoid rate-limiting
 sudo tee /etc/systemd/system/cloudflared-tunnel.service > /dev/null << SVCEOF
 [Unit]
 Description=Cloudflare Quick Tunnel for OpenClaw
-After=openclaw-gateway.service
-Requires=openclaw-gateway.service
+After=network.target
 
 [Service]
 Type=simple
 User=${RUN_USER}
 ExecStart=${CLOUDFLARED_BIN} tunnel --url http://localhost:${OPENCLAW_PORT}
 Restart=on-failure
-RestartSec=5
+RestartSec=30
+StartLimitIntervalSec=600
+StartLimitBurst=5
 Environment=HOME=${HOME}
 
 [Install]
@@ -213,14 +242,10 @@ WantedBy=multi-user.target
 SVCEOF
 
 sudo systemctl daemon-reload
-sudo systemctl enable openclaw-gateway.service
 sudo systemctl enable cloudflared-tunnel.service
-sudo systemctl restart openclaw-gateway.service
-# Give gateway a moment to start
-sleep 3
 sudo systemctl restart cloudflared-tunnel.service
 
-echo "[OK] Services started"
+echo "[OK] Tunnel service started"
 echo ""
 
 # --- 4. Capture tunnel URL ---
@@ -229,7 +254,6 @@ echo "[4/4] Waiting for tunnel URL..."
 
 TUNNEL_URL=""
 for i in $(seq 1 30); do
-  # cloudflared logs the assigned URL to stderr/journal
   TUNNEL_URL=$(journalctl -u cloudflared-tunnel.service --no-pager -n 50 2>/dev/null \
     | grep -oP 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' | tail -1 || true)
   if [ -n "$TUNNEL_URL" ]; then
@@ -240,9 +264,12 @@ done
 
 if [ -z "$TUNNEL_URL" ]; then
   echo "[!] Could not detect tunnel URL yet. It may still be starting."
-  echo "    Run: journalctl -u cloudflared-tunnel.service -f"
-  echo "    Or:  bash scripts/vps-show-info.sh"
-  TUNNEL_URL="(pending - check journalctl)"
+  echo "    Check: journalctl -u cloudflared-tunnel.service -f"
+  echo ""
+  echo "    If you see '429 Too Many Requests', wait 10-15 minutes then run:"
+  echo "    sudo systemctl restart cloudflared-tunnel.service"
+  echo "    journalctl -u cloudflared-tunnel.service -f"
+  TUNNEL_URL="(pending - see above)"
 fi
 
 echo "$TUNNEL_URL" > "$TUNNEL_INFO"
@@ -254,6 +281,13 @@ echo ""
 echo " Address: $TUNNEL_URL"
 echo " Token:   $GATEWAY_TOKEN"
 echo ""
-echo " View current info: bash scripts/vps-show-info.sh"
-echo " (URL may change after VPS restart)"
+echo " View current info anytime:"
+echo "   cat $TUNNEL_INFO     # tunnel URL"
+echo "   grep token $CONFIG_FILE  # token"
+echo ""
+echo " If tunnel URL shows 'pending', wait 10 min then:"
+echo "   sudo systemctl restart cloudflared-tunnel.service"
+echo "   journalctl -u cloudflared-tunnel.service -f"
+echo ""
+echo " (URL changes after VPS restart, token stays the same)"
 echo "========================================"
