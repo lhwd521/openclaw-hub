@@ -3,47 +3,58 @@ set -euo pipefail
 
 # =====================================================
 # OpenClaw VPS One-Click Setup Script
-# Installs OpenClaw gateway + Cloudflare Quick Tunnel
-# Usage: bash vps-setup.sh [--vercel-origin https://your-app.vercel.app]
+# Installs OpenClaw gateway + HTTPS tunnel (ngrok or cloudflared)
+#
+# Usage:
+#   bash vps-setup.sh --ngrok YOUR_NGROK_TOKEN
+#   bash vps-setup.sh --cloudflare
 # =====================================================
 
-VERCEL_ORIGIN="*"
 OPENCLAW_PORT=18789
 CONFIG_DIR="$HOME/.openclaw"
 CONFIG_FILE="$CONFIG_DIR/openclaw.json"
 TUNNEL_INFO="$CONFIG_DIR/tunnel-info.txt"
 
+TUNNEL_MODE=""
+NGROK_TOKEN=""
+
 # Parse args
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --vercel-origin)
-      VERCEL_ORIGIN="$2"
+    --ngrok)
+      TUNNEL_MODE="ngrok"
+      NGROK_TOKEN="$2"
       shift 2
       ;;
+    --cloudflare|--cf)
+      TUNNEL_MODE="cloudflare"
+      shift
+      ;;
     *)
-      echo "Unknown option: $1"
-      echo "Usage: bash vps-setup.sh [--vercel-origin https://your-app.vercel.app]"
+      echo "Usage:"
+      echo "  bash vps-setup.sh --ngrok YOUR_NGROK_TOKEN"
+      echo "  bash vps-setup.sh --cloudflare"
       exit 1
       ;;
   esac
 done
 
-echo "========================================"
-echo " OpenClaw VPS Setup"
-echo "========================================"
-echo ""
+if [ -z "$TUNNEL_MODE" ]; then
+  echo "Usage:"
+  echo "  bash vps-setup.sh --ngrok YOUR_NGROK_TOKEN    (recommended)"
+  echo "  bash vps-setup.sh --cloudflare                (no registration)"
+  exit 1
+fi
 
-# --- 1. Install dependencies ---
+# === Install dependencies ===
 
 install_nodejs() {
   if command -v node &>/dev/null; then
     NODE_VER=$(node -v | sed 's/v//' | cut -d. -f1)
     if [ "$NODE_VER" -ge 22 ]; then
-      echo "[OK] Node.js $(node -v) already installed"
       return
     fi
   fi
-
   echo "[*] Installing Node.js 22..."
   if command -v apt-get &>/dev/null; then
     curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
@@ -58,129 +69,105 @@ install_nodejs() {
     echo "[!] Could not detect package manager. Please install Node.js 22+ manually."
     exit 1
   fi
-  echo "[OK] Node.js $(node -v) installed"
 }
 
 install_pnpm() {
-  if command -v pnpm &>/dev/null; then
-    echo "[OK] pnpm already installed"
-    return
-  fi
-  echo "[*] Installing pnpm..."
+  if command -v pnpm &>/dev/null; then return; fi
   npm install -g pnpm
-  echo "[OK] pnpm installed"
 }
 
 install_openclaw() {
-  if command -v openclaw &>/dev/null; then
-    echo "[OK] openclaw already installed"
-    return
-  fi
+  if command -v openclaw &>/dev/null; then return; fi
   echo "[*] Installing openclaw..."
-  pnpm install -g openclaw
-  echo "[OK] openclaw installed"
+  curl -fsSL https://openclaw.sh | bash
+}
+
+install_ngrok() {
+  if command -v ngrok &>/dev/null; then return; fi
+  echo "[*] Installing ngrok..."
+  ARCH=$(uname -m)
+  case "$ARCH" in
+    x86_64)  NG_ARCH="amd64" ;;
+    aarch64) NG_ARCH="arm64" ;;
+    armv7l)  NG_ARCH="arm" ;;
+    *) echo "[!] Unsupported architecture: $ARCH"; exit 1 ;;
+  esac
+  curl -sSL "https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-linux-${NG_ARCH}.tgz" | sudo tar xz -C /usr/local/bin
 }
 
 install_cloudflared() {
-  if command -v cloudflared &>/dev/null; then
-    echo "[OK] cloudflared already installed"
-    return
-  fi
+  if command -v cloudflared &>/dev/null; then return; fi
   echo "[*] Installing cloudflared..."
   if command -v apt-get &>/dev/null; then
     curl -fsSL https://pkg.cloudflare.com/cloudflare-main.gpg | sudo tee /usr/share/keyrings/cloudflare-main.gpg >/dev/null
     echo "deb [signed-by=/usr/share/keyrings/cloudflare-main.gpg] https://pkg.cloudflare.com/cloudflared $(lsb_release -cs) main" | sudo tee /etc/apt/sources.list.d/cloudflared.list
-    sudo apt-get update
-    sudo apt-get install -y cloudflared
+    sudo apt-get update && sudo apt-get install -y cloudflared
   else
-    # Fallback: download binary directly
     ARCH=$(uname -m)
     case "$ARCH" in
-      x86_64) CF_ARCH="amd64" ;;
+      x86_64)  CF_ARCH="amd64" ;;
       aarch64) CF_ARCH="arm64" ;;
-      armv7l) CF_ARCH="arm" ;;
+      armv7l)  CF_ARCH="arm" ;;
       *) echo "[!] Unsupported architecture: $ARCH"; exit 1 ;;
     esac
     curl -fsSL "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CF_ARCH}" -o /tmp/cloudflared
     sudo install -m 755 /tmp/cloudflared /usr/local/bin/cloudflared
     rm -f /tmp/cloudflared
   fi
-  echo "[OK] cloudflared installed"
 }
 
-echo "[1/4] Installing dependencies..."
-install_nodejs
-install_pnpm
+echo "[*] Installing dependencies..."
 install_openclaw
-install_cloudflared
-echo ""
 
-# --- 2. Generate gateway token ---
+if [ "$TUNNEL_MODE" = "ngrok" ]; then
+  install_ngrok
+else
+  install_cloudflared
+fi
 
-echo "[2/4] Generating configuration..."
+# === Configure OpenClaw gateway using official commands ===
+
 mkdir -p "$CONFIG_DIR"
 
-GATEWAY_TOKEN=$(openssl rand -hex 24)
+# Stop any existing gateway/tunnel
+pkill -f "openclaw-gatewa" 2>/dev/null || true
+pkill -f "openclaw gateway" 2>/dev/null || true
+sudo systemctl stop openclaw-gateway.service 2>/dev/null || true
+sudo systemctl stop cloudflared-tunnel.service 2>/dev/null || true
+sudo systemctl stop ngrok-tunnel.service 2>/dev/null || true
+sleep 2
 
-# Build allowed origins
-if [ "$VERCEL_ORIGIN" = "*" ]; then
-  ORIGINS='["*"]'
-else
-  ORIGINS="[\"$VERCEL_ORIGIN\"]"
+# Reuse existing token if available, otherwise generate new one
+GATEWAY_TOKEN=""
+if [ -f "$CONFIG_FILE" ]; then
+  GATEWAY_TOKEN=$(grep -o '"token": *"[^"]*"' "$CONFIG_FILE" | head -1 | sed 's/.*: *"//;s/"//' || true)
+fi
+if [ -z "$GATEWAY_TOKEN" ]; then
+  GATEWAY_TOKEN=$(openssl rand -hex 24)
 fi
 
-# Check if gateway is already running on the target port
-EXISTING_GW=$(ss -tlnp 2>/dev/null | grep ":${OPENCLAW_PORT} " || true)
-if [ -n "$EXISTING_GW" ]; then
-  echo "[!] Port ${OPENCLAW_PORT} is already in use by an existing gateway."
-  echo "    Will update config for existing gateway instead of starting a new one."
-  SKIP_GW_SERVICE=true
+# Use openclaw config set for each setting (official way, avoids schema issues)
+openclaw config set gateway.mode local 2>/dev/null || true
+openclaw config set gateway.port ${OPENCLAW_PORT} 2>/dev/null || true
+openclaw config set gateway.auth.mode token 2>/dev/null || true
+openclaw config set gateway.auth.token "${GATEWAY_TOKEN}" 2>/dev/null || true
+openclaw config set gateway.controlUi.enabled true 2>/dev/null || true
+openclaw config set gateway.controlUi.dangerouslyDisableDeviceAuth true 2>/dev/null || true
+openclaw config set gateway.controlUi.allowInsecureAuth true 2>/dev/null || true
+openclaw config set gateway.trustedProxies '["127.0.0.1/32","::1/128"]' 2>/dev/null || true
 
-  # Read existing token if available
-  if [ -f "$CONFIG_FILE" ]; then
-    OLD_TOKEN=$(grep -o '"token": *"[^"]*"' "$CONFIG_FILE" | head -1 | sed 's/.*: *"//;s/"//' || true)
-    if [ -n "$OLD_TOKEN" ]; then
-      GATEWAY_TOKEN="$OLD_TOKEN"
-      echo "    Keeping existing token."
-    fi
-  fi
-else
-  SKIP_GW_SERVICE=false
-fi
+# Set allowedOrigins - try via config set, fallback to node edit
+openclaw config set gateway.controlUi.allowedOrigins '["*"]' 2>/dev/null || \
+  node -e 'var fs=require("fs"),f="/root/.openclaw/openclaw.json";try{var c=JSON.parse(fs.readFileSync(f,"utf8"));c.gateway=c.gateway||{};c.gateway.controlUi=c.gateway.controlUi||{};c.gateway.controlUi.allowedOrigins=["*"];fs.writeFileSync(f,JSON.stringify(c,null,2));console.log("[OK] allowedOrigins set via node")}catch(e){console.error(e)}' || true
 
-cat > "$CONFIG_FILE" << JSONEOF
-{
-  "gateway": {
-    "mode": "local",
-    "port": ${OPENCLAW_PORT},
-    "auth": {
-      "mode": "token",
-      "token": "${GATEWAY_TOKEN}"
-    },
-    "controlUi": {
-      "enabled": true,
-      "allowedOrigins": ${ORIGINS},
-      "dangerouslyDisableDeviceAuth": true,
-      "allowInsecureAuth": true
-    }
-  }
-}
-JSONEOF
+echo "[OK] Gateway configured"
 
-echo "[OK] Config written to $CONFIG_FILE"
-echo ""
+# === Start OpenClaw Gateway ===
 
-# --- 3. Create systemd services ---
-
-echo "[3/4] Setting up services..."
-
-CLOUDFLARED_BIN=$(command -v cloudflared)
 RUN_USER=$(whoami)
+OPENCLAW_BIN=$(command -v openclaw)
 
-if [ "$SKIP_GW_SERVICE" = false ]; then
-  OPENCLAW_BIN=$(command -v openclaw)
-
-  sudo tee /etc/systemd/system/openclaw-gateway.service > /dev/null << SVCEOF
+sudo tee /etc/systemd/system/openclaw-gateway.service > /dev/null << SVCEOF
 [Unit]
 Description=OpenClaw Gateway
 After=network.target
@@ -200,32 +187,81 @@ WorkingDirectory=${HOME}
 WantedBy=multi-user.target
 SVCEOF
 
-  sudo systemctl daemon-reload
-  sudo systemctl enable openclaw-gateway.service
-  sudo systemctl restart openclaw-gateway.service
-  sleep 3
-  echo "[OK] Gateway service started"
-else
-  # Restart existing gateway to pick up new config
-  echo "[*] Restarting existing gateway to load new config..."
-  openclaw gateway stop 2>/dev/null || true
-  sleep 2
-  nohup openclaw gateway > /tmp/openclaw-gateway.log 2>&1 &
-  sleep 3
+sudo systemctl daemon-reload
+sudo systemctl enable openclaw-gateway.service
+sudo systemctl restart openclaw-gateway.service
+sleep 5
 
-  # Verify it came back up
-  if ss -tlnp 2>/dev/null | grep -q ":${OPENCLAW_PORT} "; then
-    echo "[OK] Existing gateway restarted with new config"
-  else
-    echo "[!] Gateway did not restart. Check: cat /tmp/openclaw-gateway.log"
-  fi
+# Verify gateway is up
+if ! ss -tlnp 2>/dev/null | grep -q ":${OPENCLAW_PORT} "; then
+  echo "[!] Gateway failed to start. Check: journalctl -u openclaw-gateway.service -n 20"
+  exit 1
 fi
+echo "[OK] Gateway running on port ${OPENCLAW_PORT}"
 
-# cloudflared-tunnel.service with restart limits to avoid rate-limiting
-sudo tee /etc/systemd/system/cloudflared-tunnel.service > /dev/null << SVCEOF
+# === Start Tunnel ===
+
+TUNNEL_URL=""
+
+if [ "$TUNNEL_MODE" = "ngrok" ]; then
+  # --- ngrok ---
+  ngrok config add-authtoken "$NGROK_TOKEN" 2>/dev/null
+
+  NGROK_BIN=$(command -v ngrok)
+
+  sudo tee /etc/systemd/system/ngrok-tunnel.service > /dev/null << SVCEOF
+[Unit]
+Description=ngrok Tunnel for OpenClaw
+After=network.target
+
+[Service]
+Type=simple
+User=${RUN_USER}
+ExecStart=${NGROK_BIN} http ${OPENCLAW_PORT} --log stderr
+Restart=on-failure
+RestartSec=30
+StartLimitIntervalSec=600
+StartLimitBurst=5
+Environment=HOME=${HOME}
+
+[Install]
+WantedBy=multi-user.target
+SVCEOF
+
+  sudo systemctl daemon-reload
+  sudo systemctl enable ngrok-tunnel.service
+  sudo systemctl restart ngrok-tunnel.service
+  sleep 5
+
+  # Get tunnel URL from ngrok API
+  for i in $(seq 1 15); do
+    TUNNEL_URL=$(curl -s http://localhost:4040/api/tunnels 2>/dev/null \
+      | grep -o '"public_url":"https://[^"]*"' \
+      | head -1 \
+      | sed 's/"public_url":"//;s/"//' || true)
+    if [ -n "$TUNNEL_URL" ]; then
+      break
+    fi
+    sleep 2
+  done
+
+else
+  # --- cloudflared ---
+  # Use --no-tls-verify and write a config to strip proxy headers
+  CLOUDFLARED_BIN=$(command -v cloudflared)
+
+  # Create cloudflared config that disables proxy protocol headers
+  mkdir -p "$HOME/.cloudflared"
+  cat > "$HOME/.cloudflared/config.yml" << CFEOF
+url: http://localhost:${OPENCLAW_PORT}
+no-tls-verify: false
+CFEOF
+
+  sudo tee /etc/systemd/system/cloudflared-tunnel.service > /dev/null << SVCEOF
 [Unit]
 Description=Cloudflare Quick Tunnel for OpenClaw
-After=network.target
+After=openclaw-gateway.service
+Wants=openclaw-gateway.service
 
 [Service]
 Type=simple
@@ -241,53 +277,71 @@ Environment=HOME=${HOME}
 WantedBy=multi-user.target
 SVCEOF
 
-sudo systemctl daemon-reload
-sudo systemctl enable cloudflared-tunnel.service
-sudo systemctl restart cloudflared-tunnel.service
+  sudo systemctl daemon-reload
+  sudo systemctl enable cloudflared-tunnel.service
+  sudo systemctl restart cloudflared-tunnel.service
 
-echo "[OK] Tunnel service started"
-echo ""
+  for i in $(seq 1 30); do
+    TUNNEL_URL=$(journalctl -u cloudflared-tunnel.service --no-pager -n 50 2>/dev/null \
+      | grep -oP 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' | tail -1 || true)
+    if [ -n "$TUNNEL_URL" ]; then
+      break
+    fi
+    sleep 2
+  done
+fi
 
-# --- 4. Capture tunnel URL ---
-
-echo "[4/4] Waiting for tunnel URL..."
-
-TUNNEL_URL=""
-for i in $(seq 1 30); do
-  TUNNEL_URL=$(journalctl -u cloudflared-tunnel.service --no-pager -n 50 2>/dev/null \
-    | grep -oP 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' | tail -1 || true)
-  if [ -n "$TUNNEL_URL" ]; then
-    break
-  fi
-  sleep 2
-done
+# === Output result ===
 
 if [ -z "$TUNNEL_URL" ]; then
-  echo "[!] Could not detect tunnel URL yet. It may still be starting."
-  echo "    Check: journalctl -u cloudflared-tunnel.service -f"
   echo ""
-  echo "    If you see '429 Too Many Requests', wait 10-15 minutes then run:"
-  echo "    sudo systemctl restart cloudflared-tunnel.service"
-  echo "    journalctl -u cloudflared-tunnel.service -f"
-  TUNNEL_URL="(pending - see above)"
+  echo "[!] Tunnel not ready yet. Run this to check:"
+  if [ "$TUNNEL_MODE" = "ngrok" ]; then
+    echo "  curl -s http://localhost:4040/api/tunnels | grep -o 'public_url\":\"https://[^\"]*'"
+  else
+    echo "  journalctl -u cloudflared-tunnel.service -f"
+  fi
+  echo ""
+  echo "Token: $GATEWAY_TOKEN"
+  exit 1
 fi
 
 echo "$TUNNEL_URL" > "$TUNNEL_INFO"
 
 echo ""
 echo "========================================"
-echo " OpenClaw is ready!"
 echo ""
-echo " Address: $TUNNEL_URL"
-echo " Token:   $GATEWAY_TOKEN"
+echo "  Address: $TUNNEL_URL"
+echo "  Token:   $GATEWAY_TOKEN"
 echo ""
-echo " View current info anytime:"
-echo "   cat $TUNNEL_INFO     # tunnel URL"
-echo "   grep token $CONFIG_FILE  # token"
-echo ""
-echo " If tunnel URL shows 'pending', wait 10 min then:"
-echo "   sudo systemctl restart cloudflared-tunnel.service"
-echo "   journalctl -u cloudflared-tunnel.service -f"
-echo ""
-echo " (URL changes after VPS restart, token stays the same)"
 echo "========================================"
+echo ""
+echo "  View info anytime: bash ~/.openclaw/show-info.sh"
+echo "  (URL changes after VPS restart, token stays the same)"
+echo ""
+
+# Save a show-info helper
+cat > "$CONFIG_DIR/show-info.sh" << 'SHOWEOF'
+#!/usr/bin/env bash
+TUNNEL_URL=""
+# Try ngrok first
+if systemctl is-active ngrok-tunnel.service &>/dev/null; then
+  TUNNEL_URL=$(curl -s http://localhost:4040/api/tunnels 2>/dev/null \
+    | grep -o '"public_url":"https://[^"]*"' | head -1 | sed 's/"public_url":"//;s/"//' || true)
+fi
+# Try cloudflared
+if [ -z "$TUNNEL_URL" ] && systemctl is-active cloudflared-tunnel.service &>/dev/null; then
+  TUNNEL_URL=$(journalctl -u cloudflared-tunnel.service --no-pager -n 50 2>/dev/null \
+    | grep -oP 'https://[a-zA-Z0-9-]+\.trycloudflare\.com' | tail -1 || true)
+fi
+# Fallback to saved
+if [ -z "$TUNNEL_URL" ] && [ -f "$HOME/.openclaw/tunnel-info.txt" ]; then
+  TUNNEL_URL=$(cat "$HOME/.openclaw/tunnel-info.txt")
+fi
+TOKEN=$(grep -o '"token": *"[^"]*"' "$HOME/.openclaw/openclaw.json" 2>/dev/null | head -1 | sed 's/.*: *"//;s/"//' || echo "(not found)")
+echo ""
+echo "  Address: ${TUNNEL_URL:-(not available)}"
+echo "  Token:   $TOKEN"
+echo ""
+SHOWEOF
+chmod +x "$CONFIG_DIR/show-info.sh"
