@@ -67,10 +67,10 @@ export class OpenClawClient {
               minProtocol: PROTOCOL_VERSION,
               maxProtocol: PROTOCOL_VERSION,
               client: {
-                id: "openclaw-control-ui",
+                id: "gateway-client",
                 version: "1.0.0",
                 platform: "web",
-                mode: "webchat",
+                mode: "cli",
                 displayName: this.username || "Hub User",
                 deviceFamily: "desktop",
                 instanceId: this.instanceId,
