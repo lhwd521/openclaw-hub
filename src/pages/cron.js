@@ -198,7 +198,9 @@ function showJobDetail(job) {
   if (job.schedule) {
     if (job.schedule.kind === "cron") {
       rows.push(["计划类型 / Type", "Cron"]);
-      rows.push(["Cron 表达式 / Expr", job.schedule.expr || "-"]);
+      const expr = job.schedule.expr || "-";
+      const desc = describeCron(expr);
+      rows.push(["Cron 表达式 / Expr", desc ? `${desc}  (${expr})` : expr]);
       if (job.schedule.timezone) rows.push(["时区 / Timezone", job.schedule.timezone]);
     } else if (job.schedule.kind === "every") {
       rows.push(["计划类型 / Type", "Interval"]);
@@ -305,15 +307,98 @@ async function loadRuns(client, jobId) {
 
 function formatSchedule(schedule) {
   if (!schedule) return "Unknown";
-  if (schedule.kind === "cron") return schedule.expr || "cron";
+  if (schedule.kind === "cron") {
+    const expr = schedule.expr || "cron";
+    const desc = describeCron(expr);
+    return desc ? `${desc}  (${expr})` : expr;
+  }
   if (schedule.kind === "every") {
     const ms = schedule.everyMs || 0;
-    if (ms >= 3600000) return `Every ${(ms / 3600000).toFixed(1)}h`;
-    if (ms >= 60000) return `Every ${(ms / 60000).toFixed(0)}m`;
-    return `Every ${(ms / 1000).toFixed(0)}s`;
+    if (ms >= 86400000) return `每 ${(ms / 86400000).toFixed(1)} 天`;
+    if (ms >= 3600000) return `每 ${(ms / 3600000).toFixed(1)} 小时`;
+    if (ms >= 60000) return `每 ${(ms / 60000).toFixed(0)} 分钟`;
+    return `每 ${(ms / 1000).toFixed(0)} 秒`;
   }
-  if (schedule.kind === "at") return `Once at ${new Date(schedule.at).toLocaleString()}`;
+  if (schedule.kind === "at") return `一次性  ${new Date(schedule.at).toLocaleString()}`;
   return JSON.stringify(schedule);
+}
+
+// Parse standard 5-field cron expression into human-readable Chinese
+function describeCron(expr) {
+  if (!expr || typeof expr !== "string") return "";
+  const parts = expr.trim().split(/\s+/);
+  if (parts.length < 5) return "";
+
+  const [min, hour, dom, mon, dow] = parts;
+
+  const dayNames = ["日", "一", "二", "三", "四", "五", "六"];
+  const monNames = ["", "1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
+
+  // Helper: pad time
+  const pad = (v) => v.padStart(2, "0");
+
+  // "every minute" — * * * * *
+  if (min === "*" && hour === "*" && dom === "*" && mon === "*" && dow === "*") {
+    return "每分钟";
+  }
+
+  // Every N minutes — */N * * * *
+  const everyMin = min.match(/^\*\/(\d+)$/);
+  if (everyMin && hour === "*" && dom === "*" && mon === "*" && dow === "*") {
+    return `每 ${everyMin[1]} 分钟`;
+  }
+
+  // Every N hours — 0 */N * * *
+  const everyHour = hour.match(/^\*\/(\d+)$/);
+  if (everyHour && dom === "*" && mon === "*" && dow === "*") {
+    return `每 ${everyHour[1]} 小时 (${pad(min)} 分)`;
+  }
+
+  // Build time string for fixed hour:min
+  let timeStr = "";
+  if (hour !== "*" && min !== "*" && !hour.includes("/") && !min.includes("/")) {
+    // Could be comma-separated hours
+    const hours = hour.split(",");
+    const mins = min.split(",");
+    if (hours.length === 1 && mins.length === 1) {
+      timeStr = `${pad(hours[0])}:${pad(mins[0])}`;
+    } else if (mins.length === 1) {
+      timeStr = hours.map((h) => `${pad(h)}:${pad(mins[0])}`).join(", ");
+    } else {
+      timeStr = `${hour}:${min}`;
+    }
+  }
+
+  // Daily — M H * * *
+  if (dom === "*" && mon === "*" && dow === "*" && timeStr) {
+    return `每天 ${timeStr}`;
+  }
+
+  // Weekly — M H * * D
+  if (dom === "*" && mon === "*" && dow !== "*" && timeStr) {
+    const days = dow.split(",").map((d) => {
+      const n = parseInt(d, 10);
+      return isNaN(n) ? d : (dayNames[n] || d);
+    });
+    return `每周${days.join("、")} ${timeStr}`;
+  }
+
+  // Monthly — M H D * *
+  if (dom !== "*" && mon === "*" && dow === "*" && timeStr) {
+    const days = dom.split(",").join("、");
+    return `每月 ${days} 日 ${timeStr}`;
+  }
+
+  // Yearly — M H D Mo *
+  if (dom !== "*" && mon !== "*" && dow === "*" && timeStr) {
+    const months = mon.split(",").map((m) => {
+      const n = parseInt(m, 10);
+      return isNaN(n) ? m : (monNames[n] || `${m}月`);
+    });
+    return `每年 ${months.join("、")} ${dom}日 ${timeStr}`;
+  }
+
+  return "";
 }
 
 function formatTime(ms) {
