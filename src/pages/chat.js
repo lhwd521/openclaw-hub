@@ -129,6 +129,14 @@ export function renderChat(container) {
         if (streamEl) {
           if (payload.state === "error" && payload.errorMessage) {
             updateStreamMessage(streamEl, streamContent + "\n\n[Error: " + payload.errorMessage + "]");
+          } else if (payload.state === "final" && payload.message) {
+            // Use the complete final message to replace partial stream content
+            // This prevents truncation when delta frames are lost over the network
+            const finalText = extractMessageText(payload.message);
+            if (finalText) {
+              updateStreamMessage(streamEl, finalText);
+              scrollToBottom(messagesEl);
+            }
           }
           streamEl = null;
           streamContent = "";
