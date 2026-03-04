@@ -41,6 +41,10 @@ export function renderCron(container) {
       <div id="cron-table-container">
         <p style="color:var(--text-muted)">${t("cron.loading")}</p>
       </div>
+      <div id="cron-detail-container" style="margin-top:24px;display:none">
+        <h3 style="font-size:14px;margin-bottom:12px">${t("cron.detail_title")} <button class="btn btn-sm" id="close-detail">${t("cron.close")}</button></h3>
+        <div id="cron-detail-content"></div>
+      </div>
       <div id="cron-runs-container" style="margin-top:24px;display:none">
         <h3 style="font-size:14px;margin-bottom:12px">${t("cron.recent_runs")} <button class="btn btn-sm" id="close-runs">${t("cron.close")}</button></h3>
         <div id="cron-runs-list"></div>
@@ -137,11 +141,18 @@ function renderCronTable(jobs, client) {
       <td style="font-size:12px">${lastRun}</td>
       <td style="font-size:12px">${nextRun}</td>
       <td>
+        <button class="btn btn-sm detail-job-btn" data-id="${escapeHtml(job.id)}">${t("cron.detail")}</button>
         <button class="btn btn-sm run-job-btn" data-id="${escapeHtml(job.id)}">${t("cron.run_now")}</button>
         <button class="btn btn-sm view-runs-btn" data-id="${escapeHtml(job.id)}">${t("cron.runs")}</button>
       </td>
     `;
     tbody.appendChild(tr);
+  }
+
+  // Build job lookup map
+  const jobMap = new Map();
+  for (const job of jobs) {
+    jobMap.set(job.id, job);
   }
 
   // Event delegation
@@ -150,7 +161,9 @@ function renderCronTable(jobs, client) {
     if (!btn) return;
     const jobId = btn.dataset.id;
 
-    if (btn.classList.contains("run-job-btn")) {
+    if (btn.classList.contains("detail-job-btn")) {
+      showJobDetail(jobMap.get(jobId));
+    } else if (btn.classList.contains("run-job-btn")) {
       btn.disabled = true;
       btn.textContent = t("cron.running");
       try {
@@ -166,6 +179,76 @@ function renderCronTable(jobs, client) {
       loadRuns(client, jobId);
     }
   });
+}
+
+function showJobDetail(job) {
+  const detailContainer = document.getElementById("cron-detail-container");
+  const detailContent = document.getElementById("cron-detail-content");
+  if (!detailContainer || !detailContent || !job) return;
+
+  detailContainer.style.display = "block";
+
+  // Build readable detail
+  const rows = [];
+  if (job.id) rows.push(["ID", job.id]);
+  if (job.name) rows.push(["名称 / Name", job.name]);
+  if (job.enabled !== undefined) rows.push(["状态 / Status", job.enabled !== false ? "✓ Enabled" : "✗ Disabled"]);
+
+  // Schedule detail
+  if (job.schedule) {
+    if (job.schedule.kind === "cron") {
+      rows.push(["计划类型 / Type", "Cron"]);
+      rows.push(["Cron 表达式 / Expr", job.schedule.expr || "-"]);
+      if (job.schedule.timezone) rows.push(["时区 / Timezone", job.schedule.timezone]);
+    } else if (job.schedule.kind === "every") {
+      rows.push(["计划类型 / Type", "Interval"]);
+      rows.push(["间隔 / Interval", formatInterval(job.schedule.everyMs)]);
+    } else if (job.schedule.kind === "at") {
+      rows.push(["计划类型 / Type", "Once"]);
+      rows.push(["执行时间 / At", new Date(job.schedule.at).toLocaleString()]);
+    } else {
+      rows.push(["计划 / Schedule", JSON.stringify(job.schedule, null, 2)]);
+    }
+  }
+
+  if (job.lastRunAtMs) rows.push(["上次执行 / Last Run", formatTime(job.lastRunAtMs)]);
+  if (job.nextRunAtMs) rows.push(["下次执行 / Next Run", formatTime(job.nextRunAtMs)]);
+  if (job.prompt) rows.push(["Prompt", job.prompt]);
+  if (job.message) rows.push(["Message", job.message]);
+  if (job.sessionKey) rows.push(["Session", job.sessionKey]);
+
+  // Render as table
+  detailContent.innerHTML = `
+    <table class="cron-table" style="max-width:600px">
+      <tbody>
+        ${rows.map(([label, value]) => {
+          const isLong = typeof value === "string" && (value.length > 80 || value.includes("\n"));
+          return `<tr>
+            <td style="font-size:12px;color:var(--text-secondary);white-space:nowrap;vertical-align:top;width:140px"><strong>${escapeHtml(label)}</strong></td>
+            <td style="font-size:13px;${isLong ? "white-space:pre-wrap;" : ""}">${escapeHtml(String(value))}</td>
+          </tr>`;
+        }).join("")}
+      </tbody>
+    </table>
+    <details style="margin-top:12px">
+      <summary style="font-size:12px;color:var(--text-muted);cursor:pointer">JSON</summary>
+      <pre style="background:var(--bg-tertiary);padding:12px;border-radius:4px;overflow-x:auto;margin-top:8px;font-size:12px"><code>${escapeHtml(JSON.stringify(job, null, 2))}</code></pre>
+    </details>
+  `;
+
+  document.getElementById("close-detail")?.addEventListener("click", () => {
+    detailContainer.style.display = "none";
+  });
+
+  detailContainer.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+function formatInterval(ms) {
+  if (!ms) return "-";
+  if (ms >= 86400000) return `${(ms / 86400000).toFixed(1)} 天 / days`;
+  if (ms >= 3600000) return `${(ms / 3600000).toFixed(1)} 小时 / hours`;
+  if (ms >= 60000) return `${(ms / 60000).toFixed(0)} 分钟 / minutes`;
+  return `${(ms / 1000).toFixed(0)} 秒 / seconds`;
 }
 
 async function loadRuns(client, jobId) {
