@@ -30,6 +30,12 @@ export function renderChat(container) {
     return;
   }
 
+  // Online users for this connection
+  const onlineUsers = state.onlineUsers[connId] || [];
+  const onlineNames = onlineUsers
+    .map((u) => u.host || u.displayName || u.instanceId || "")
+    .filter((n) => n);
+
   container.innerHTML = `
     <div class="chat-container">
       <div class="page-header">
@@ -40,6 +46,7 @@ export function renderChat(container) {
           ${busy ? `<button class="btn btn-sm btn-danger" id="abort-btn">${t("chat.abort")}</button>` : ""}
         </div>
       </div>
+      ${onlineNames.length > 0 ? `<div class="online-users-bar" id="online-users-bar">${t("status.online_users")}: ${onlineNames.map((n) => `<span class="online-user-tag">${escapeHtml(n)}</span>`).join("")}</div>` : ""}
       <div class="chat-messages" id="chat-messages"></div>
       <div class="chat-input-area">
         <div class="file-preview" id="file-preview"></div>
@@ -180,6 +187,32 @@ export function renderChat(container) {
 
     chatUnsubs.push(chatUnsub);
     chatUnsubs.push(reconnectUnsub);
+
+    // Update online users bar when presence changes
+    const presenceUnsub = client.onPresence((payload) => {
+      const bar = container.querySelector("#online-users-bar");
+      if (payload?.presence) {
+        const names = payload.presence
+          .map((u) => u.host || u.displayName || "")
+          .filter((n) => n);
+        if (names.length > 0) {
+          const html = `${t("status.online_users")}: ${names.map((n) => `<span class="online-user-tag">${escapeHtml(n)}</span>`).join("")}`;
+          if (bar) {
+            bar.innerHTML = html;
+          } else {
+            const newBar = document.createElement("div");
+            newBar.className = "online-users-bar";
+            newBar.id = "online-users-bar";
+            newBar.innerHTML = html;
+            const header = container.querySelector(".page-header");
+            if (header) header.after(newBar);
+          }
+        } else if (bar) {
+          bar.remove();
+        }
+      }
+    });
+    chatUnsubs.push(presenceUnsub);
   }
 
   async function sendMessage() {

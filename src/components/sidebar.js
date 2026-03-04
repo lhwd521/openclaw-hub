@@ -32,13 +32,22 @@ export function renderSidebar(sidebarEl) {
     const status = state.connectionStatuses[conn.id] || "disconnected";
     const isActive = state.activeConnectionId === conn.id;
     const busy = state.isBusy[conn.id] || false;
+    const onlineUsers = state.onlineUsers[conn.id] || [];
+    const userCount = onlineUsers.length;
+    const userNames = onlineUsers
+      .map((u) => u.host || u.displayName || "")
+      .filter((n) => n)
+      .join(", ");
 
     const item = document.createElement("div");
     item.className = `connection-item${isActive ? " active" : ""}`;
     item.dataset.id = conn.id;
     item.innerHTML = `
       <span class="status-dot ${status}"></span>
-      <span class="connection-name">${escapeHtml(conn.name)}${busy ? " " + t("sidebar.busy") : ""}</span>
+      <div class="connection-info">
+        <span class="connection-name">${escapeHtml(conn.name)}${busy ? " " + t("sidebar.busy") : ""}</span>
+        ${status === "connected" && userCount > 0 ? `<span class="connection-users">${userCount} ${t("status.online_users")}${userNames ? ": " + escapeHtml(userNames) : ""}</span>` : ""}
+      </div>
     `;
     item.addEventListener("click", () => {
       store.setActiveConnection(conn.id);
