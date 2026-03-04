@@ -3,6 +3,7 @@
 import { store } from "../store.js";
 import { connectionManager } from "../main.js";
 import { showToast } from "../components/sidebar.js";
+import { t } from "../i18n.js";
 
 let cronInterval = null;
 
@@ -18,8 +19,8 @@ export function renderCron(container) {
   if (!connId || !conn) {
     container.innerHTML = `
       <div class="empty-state">
-        <h3>No connection selected</h3>
-        <p>Select a VPS from the sidebar to view cron jobs.</p>
+        <h3>${t("cron.no_connection")}</h3>
+        <p>${t("cron.no_connection_desc")}</p>
       </div>
     `;
     return;
@@ -27,21 +28,21 @@ export function renderCron(container) {
 
   container.innerHTML = `
     <div class="page-header">
-      <h1>Cron Jobs - ${escapeHtml(conn.name)}</h1>
-      <button class="btn btn-sm" id="refresh-cron">Refresh</button>
+      <h1>${t("cron.title")} - ${escapeHtml(conn.name)}</h1>
+      <button class="btn btn-sm" id="refresh-cron">${t("cron.refresh")}</button>
     </div>
     <div class="page-body">
       <div id="cron-status-section" style="margin-bottom:20px">
         <div class="status-card" style="display:inline-block">
-          <h3>Cron Service</h3>
-          <div id="cron-service-status" class="status-value">Loading...</div>
+          <h3>${t("cron.service")}</h3>
+          <div id="cron-service-status" class="status-value">${t("status.loading")}</div>
         </div>
       </div>
       <div id="cron-table-container">
-        <p style="color:var(--text-muted)">Loading cron jobs...</p>
+        <p style="color:var(--text-muted)">${t("cron.loading")}</p>
       </div>
       <div id="cron-runs-container" style="margin-top:24px;display:none">
-        <h3 style="font-size:14px;margin-bottom:12px">Recent Runs <button class="btn btn-sm" id="close-runs">Close</button></h3>
+        <h3 style="font-size:14px;margin-bottom:12px">${t("cron.recent_runs")} <button class="btn btn-sm" id="close-runs">${t("cron.close")}</button></h3>
         <div id="cron-runs-list"></div>
       </div>
     </div>
@@ -70,12 +71,12 @@ async function loadCronData(client) {
     const status = await client.getCronStatus();
     const el = document.getElementById("cron-service-status");
     if (el) {
-      el.textContent = status?.enabled !== false ? "Active" : "Disabled";
+      el.textContent = status?.enabled !== false ? t("cron.active") : t("cron.disabled");
       el.className = `status-value ${status?.enabled !== false ? "idle" : "busy"}`;
     }
   } catch {
     const el = document.getElementById("cron-service-status");
-    if (el) el.textContent = "Unknown";
+    if (el) el.textContent = t("cron.unknown");
   }
 
   // Load cron jobs
@@ -86,7 +87,7 @@ async function loadCronData(client) {
   } catch (err) {
     const container = document.getElementById("cron-table-container");
     if (container) {
-      container.innerHTML = `<p style="color:var(--error)">Failed to load cron jobs: ${escapeHtml(err.message)}</p>`;
+      container.innerHTML = `<p style="color:var(--error)">${t("cron.load_fail")}${escapeHtml(err.message)}</p>`;
     }
   }
 }
@@ -98,8 +99,8 @@ function renderCronTable(jobs, client) {
   if (jobs.length === 0) {
     container.innerHTML = `
       <div class="empty-state">
-        <h3>No cron jobs</h3>
-        <p>No scheduled tasks configured on this VPS.</p>
+        <h3>${t("cron.no_jobs")}</h3>
+        <p>${t("cron.no_jobs_desc")}</p>
       </div>
     `;
     return;
@@ -109,12 +110,12 @@ function renderCronTable(jobs, client) {
     <table class="cron-table">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Schedule</th>
-          <th>Status</th>
-          <th>Last Run</th>
-          <th>Next Run</th>
-          <th>Actions</th>
+          <th>${t("cron.col_name")}</th>
+          <th>${t("cron.col_schedule")}</th>
+          <th>${t("cron.col_status")}</th>
+          <th>${t("cron.col_last_run")}</th>
+          <th>${t("cron.col_next_run")}</th>
+          <th>${t("cron.col_actions")}</th>
         </tr>
       </thead>
       <tbody id="cron-tbody"></tbody>
@@ -132,12 +133,12 @@ function renderCronTable(jobs, client) {
     tr.innerHTML = `
       <td><strong>${escapeHtml(job.name || job.id)}</strong></td>
       <td style="font-family:var(--font-mono);font-size:12px">${escapeHtml(scheduleText)}</td>
-      <td><span class="cron-status-badge ${job.enabled !== false ? "enabled" : "disabled"}">${job.enabled !== false ? "Enabled" : "Disabled"}</span></td>
+      <td><span class="cron-status-badge ${job.enabled !== false ? "enabled" : "disabled"}">${job.enabled !== false ? t("cron.enabled") : t("cron.disabled")}</span></td>
       <td style="font-size:12px">${lastRun}</td>
       <td style="font-size:12px">${nextRun}</td>
       <td>
-        <button class="btn btn-sm run-job-btn" data-id="${escapeHtml(job.id)}">Run Now</button>
-        <button class="btn btn-sm view-runs-btn" data-id="${escapeHtml(job.id)}">Runs</button>
+        <button class="btn btn-sm run-job-btn" data-id="${escapeHtml(job.id)}">${t("cron.run_now")}</button>
+        <button class="btn btn-sm view-runs-btn" data-id="${escapeHtml(job.id)}">${t("cron.runs")}</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -151,15 +152,15 @@ function renderCronTable(jobs, client) {
 
     if (btn.classList.contains("run-job-btn")) {
       btn.disabled = true;
-      btn.textContent = "Running...";
+      btn.textContent = t("cron.running");
       try {
         await client.runCronJob(jobId);
-        showToast("Job triggered", "success");
+        showToast(t("cron.job_triggered"), "success");
       } catch (err) {
-        showToast(`Failed: ${err.message}`, "error");
+        showToast(t("cron.job_fail") + err.message, "error");
       } finally {
         btn.disabled = false;
-        btn.textContent = "Run Now";
+        btn.textContent = t("cron.run_now");
       }
     } else if (btn.classList.contains("view-runs-btn")) {
       loadRuns(client, jobId);
@@ -173,7 +174,7 @@ async function loadRuns(client, jobId) {
   if (!runsContainer || !runsList) return;
 
   runsContainer.style.display = "block";
-  runsList.innerHTML = '<p style="color:var(--text-muted)">Loading...</p>';
+  runsList.innerHTML = `<p style="color:var(--text-muted)">${t("status.loading")}</p>`;
 
   document.getElementById("close-runs")?.addEventListener("click", () => {
     runsContainer.style.display = "none";
@@ -184,7 +185,7 @@ async function loadRuns(client, jobId) {
     const runs = result?.runs || result?.items || [];
 
     if (runs.length === 0) {
-      runsList.innerHTML = '<p style="color:var(--text-muted)">No runs recorded.</p>';
+      runsList.innerHTML = `<p style="color:var(--text-muted)">${t("cron.no_runs")}</p>`;
       return;
     }
 
@@ -192,10 +193,10 @@ async function loadRuns(client, jobId) {
       <table class="cron-table">
         <thead>
           <tr>
-            <th>Time</th>
-            <th>Status</th>
-            <th>Duration</th>
-            <th>Details</th>
+            <th>${t("cron.col_time")}</th>
+            <th>${t("cron.col_status")}</th>
+            <th>${t("cron.col_duration")}</th>
+            <th>${t("cron.col_details")}</th>
           </tr>
         </thead>
         <tbody>
@@ -215,7 +216,7 @@ async function loadRuns(client, jobId) {
       </table>
     `;
   } catch (err) {
-    runsList.innerHTML = `<p style="color:var(--error)">Failed: ${escapeHtml(err.message)}</p>`;
+    runsList.innerHTML = `<p style="color:var(--error)">${t("cron.runs_fail")}${escapeHtml(err.message)}</p>`;
   }
 }
 

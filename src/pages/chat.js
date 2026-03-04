@@ -5,6 +5,7 @@ import { connectionManager } from "../main.js";
 import { renderMessage } from "../components/message.js";
 import { createFileUpload } from "../components/file-upload.js";
 import { showToast } from "../components/sidebar.js";
+import { t } from "../i18n.js";
 
 let chatUnsubs = [];
 let pendingAttachments = [];
@@ -22,8 +23,8 @@ export function renderChat(container) {
   if (!connId || !conn) {
     container.innerHTML = `
       <div class="empty-state">
-        <h3>No connection selected</h3>
-        <p>Select a VPS from the sidebar or add a new connection.</p>
+        <h3>${t("chat.no_connection")}</h3>
+        <p>${t("chat.no_connection_desc")}</p>
       </div>
     `;
     return;
@@ -35,8 +36,8 @@ export function renderChat(container) {
         <h1>${escapeHtml(conn.name)}</h1>
         <div style="display:flex;gap:8px;align-items:center">
           <span class="status-dot ${isConnected ? "connected" : "disconnected"}" style="display:inline-block"></span>
-          <span style="font-size:13px;color:var(--text-secondary)">${isConnected ? "Connected" : "Disconnected"}</span>
-          ${busy ? '<button class="btn btn-sm btn-danger" id="abort-btn">Abort</button>' : ""}
+          <span style="font-size:13px;color:var(--text-secondary)">${isConnected ? t("chat.connected") : t("chat.disconnected")}</span>
+          ${busy ? `<button class="btn btn-sm btn-danger" id="abort-btn">${t("chat.abort")}</button>` : ""}
         </div>
       </div>
       <div class="chat-messages" id="chat-messages"></div>
@@ -48,8 +49,8 @@ export function renderChat(container) {
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/>
             </svg>
           </div>
-          <textarea id="chat-input" placeholder="${isConnected ? "Type a message..." : "Connect first to send messages"}" rows="1" ${isConnected ? "" : "disabled"}></textarea>
-          <button class="btn btn-primary" id="send-btn" ${isConnected ? "" : "disabled"}>Send</button>
+          <textarea id="chat-input" placeholder="${isConnected ? t("chat.placeholder") : t("chat.placeholder_disabled")}" rows="1" ${isConnected ? "" : "disabled"}></textarea>
+          <button class="btn btn-primary" id="send-btn" ${isConnected ? "" : "disabled"}>${t("chat.send")}</button>
         </div>
         <div class="chat-status" id="chat-status"></div>
       </div>
@@ -92,9 +93,9 @@ export function renderChat(container) {
       if (client) {
         try {
           await client.abortRun("main");
-          showToast("Run aborted", "success");
+          showToast(t("chat.abort_success"), "success");
         } catch (err) {
-          showToast(`Abort failed: ${err.message}`, "error");
+          showToast(t("chat.abort_fail") + err.message, "error");
         }
       }
     });
@@ -114,7 +115,7 @@ export function renderChat(container) {
       if (payload.state === "delta") {
         if (!streamEl) {
           streamEl = appendStreamMessage(messagesEl);
-          statusEl.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div> Generating...`;
+          statusEl.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div> ${t("chat.generating")}`;
         }
         if (payload.message?.content) {
           const textParts = Array.isArray(payload.message.content)
@@ -132,7 +133,6 @@ export function renderChat(container) {
           streamEl = null;
           streamContent = "";
         } else if (payload.state === "final" && payload.message) {
-          // Full message arrived without deltas
           const text = extractMessageText(payload.message);
           if (text) {
             appendMessage(messagesEl, "assistant", text);
@@ -152,8 +152,7 @@ export function renderChat(container) {
     if (!text && pendingAttachments.length === 0) return;
     if (!client || !isConnected) return;
 
-    // Add user message to UI
-    const displayText = text || "[attachment]";
+    const displayText = text || t("chat.attachment");
     appendMessage(messagesEl, "user", displayText);
     scrollToBottom(messagesEl);
 
@@ -168,7 +167,7 @@ export function renderChat(container) {
       store.setBusy(connId, true);
       await client.sendMessage("main", text, attachments);
     } catch (err) {
-      showToast(`Send failed: ${err.message}`, "error");
+      showToast(t("chat.send_fail") + err.message, "error");
       store.setBusy(connId, false);
     }
   }

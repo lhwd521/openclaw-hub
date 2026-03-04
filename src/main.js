@@ -8,6 +8,7 @@ import { renderChat, cleanupChat } from "./pages/chat.js";
 import { renderStatus, cleanupStatus } from "./pages/status.js";
 import { renderCron, cleanupCron } from "./pages/cron.js";
 import { renderSidebar, showToast } from "./components/sidebar.js";
+import { t } from "./i18n.js";
 
 // --- Connection Manager ---
 // Manages OpenClawClient instances for each VPS connection
@@ -75,7 +76,7 @@ class ConnectionManager {
         store.setOnlineUsers(connectionId, helloPayload.snapshot.presence);
       }
 
-      showToast(`Connected to ${conn.name}`, "success");
+      showToast(`${t("conn.connected_to")} ${conn.name}`, "success");
     } catch (err) {
       store.setConnectionStatus(connectionId, "error");
       this.clients.delete(connectionId);

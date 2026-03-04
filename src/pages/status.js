@@ -2,6 +2,7 @@
 
 import { store } from "../store.js";
 import { connectionManager } from "../main.js";
+import { t } from "../i18n.js";
 
 let statusInterval = null;
 
@@ -17,8 +18,8 @@ export function renderStatus(container) {
   if (!connId || !conn) {
     container.innerHTML = `
       <div class="empty-state">
-        <h3>No connection selected</h3>
-        <p>Select a VPS from the sidebar to view its status.</p>
+        <h3>${t("status.no_connection")}</h3>
+        <p>${t("status.no_connection_desc")}</p>
       </div>
     `;
     return;
@@ -26,30 +27,30 @@ export function renderStatus(container) {
 
   container.innerHTML = `
     <div class="page-header">
-      <h1>Status - ${escapeHtml(conn.name)}</h1>
-      <button class="btn btn-sm" id="refresh-status">Refresh</button>
+      <h1>${t("status.title")} - ${escapeHtml(conn.name)}</h1>
+      <button class="btn btn-sm" id="refresh-status">${t("status.refresh")}</button>
     </div>
     <div class="page-body">
       <div class="status-grid" id="status-grid">
         <div class="status-card">
-          <h3>Connection</h3>
+          <h3>${t("status.connection")}</h3>
           <div class="status-value ${isConnected ? "idle" : ""}" id="conn-status">
-            ${isConnected ? "Connected" : "Disconnected"}
+            ${isConnected ? t("status.connected") : t("status.disconnected")}
           </div>
         </div>
         <div class="status-card">
-          <h3>Agent Status</h3>
-          <div class="status-value" id="busy-status">Loading...</div>
+          <h3>${t("status.agent")}</h3>
+          <div class="status-value" id="busy-status">${t("status.loading")}</div>
         </div>
         <div class="status-card" style="grid-column: span 2">
-          <h3>Online Users</h3>
+          <h3>${t("status.online_users")}</h3>
           <ul class="user-list" id="user-list">
-            <li style="color:var(--text-muted)">Loading...</li>
+            <li style="color:var(--text-muted)">${t("status.loading")}</li>
           </ul>
         </div>
         <div class="status-card" style="grid-column: span 2">
-          <h3>Health Details</h3>
-          <pre id="health-details" style="font-size:12px;color:var(--text-secondary);white-space:pre-wrap;max-height:300px;overflow:auto">Loading...</pre>
+          <h3>${t("status.health")}</h3>
+          <pre id="health-details" style="font-size:12px;color:var(--text-secondary);white-space:pre-wrap;max-height:300px;overflow:auto">${t("status.loading")}</pre>
         </div>
       </div>
     </div>
@@ -79,7 +80,7 @@ async function refreshStatus(client, connId) {
   const busy = state.isBusy[connId];
   if (busyEl) {
     busyEl.className = `status-value ${busy ? "busy" : "idle"}`;
-    busyEl.textContent = busy ? "Busy" : "Idle";
+    busyEl.textContent = busy ? t("status.busy") : t("status.idle");
   }
 
   // Update online users from presence snapshot
@@ -87,7 +88,7 @@ async function refreshStatus(client, connId) {
   const presenceUsers = state.onlineUsers[connId] || [];
   if (userListEl) {
     if (presenceUsers.length === 0) {
-      userListEl.innerHTML = '<li style="color:var(--text-muted)">No users detected</li>';
+      userListEl.innerHTML = `<li style="color:var(--text-muted)">${t("status.no_users")}</li>`;
     } else {
       userListEl.innerHTML = presenceUsers
         .map(
@@ -112,7 +113,7 @@ async function refreshStatus(client, connId) {
     }
   } catch {
     const detailsEl = document.getElementById("health-details");
-    if (detailsEl) detailsEl.textContent = "Failed to fetch health info";
+    if (detailsEl) detailsEl.textContent = t("status.health_fail");
   }
 }
 
