@@ -5,7 +5,6 @@ import { OpenClawClient } from "./gateway.js";
 import { renderLogin } from "./pages/login.js";
 import { renderConnections } from "./pages/connections.js";
 import { renderChat, cleanupChat } from "./pages/chat.js";
-import { renderStatus, cleanupStatus } from "./pages/status.js";
 import { renderCron, cleanupCron } from "./pages/cron.js";
 import { renderSidebar, showToast } from "./components/sidebar.js";
 import { t } from "./i18n.js";
@@ -165,7 +164,6 @@ function render() {
   if (pageChanged) {
     // Cleanup previous page
     cleanupChat();
-    cleanupStatus();
     cleanupCron();
     main.innerHTML = "";
   }
@@ -188,13 +186,6 @@ function render() {
         cleanupChat();
         main.innerHTML = "";
         renderChat(main);
-      }
-      break;
-    case "status":
-      if (pageChanged || connChanged) {
-        cleanupStatus();
-        main.innerHTML = "";
-        renderStatus(main);
       }
       break;
     case "cron":

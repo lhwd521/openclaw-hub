@@ -342,14 +342,8 @@ export class OpenClawClient {
 
   // --- Cron Methods ---
 
-  getCronJobs(opts = {}) {
-    return this.request("cron.list", {
-      limit: opts.limit || 50,
-      offset: opts.offset || 0,
-      enabled: opts.enabled || "all",
-      sortBy: opts.sortBy || "nextRunAtMs",
-      sortDir: opts.sortDir || "asc",
-    });
+  getCronJobs() {
+    return this.request("cron.list", {});
   }
 
   getCronStatus() {
@@ -360,14 +354,9 @@ export class OpenClawClient {
     return this.request("cron.run", { id, mode: "force" });
   }
 
-  getCronRuns(jobId, opts = {}) {
-    const params = {
-      limit: opts.limit || 50,
-      offset: opts.offset || 0,
-      sortDir: opts.sortDir || "desc",
-    };
+  getCronRuns(jobId) {
+    const params = {};
     if (jobId) {
-      params.scope = "job";
       params.id = jobId;
     }
     return this.request("cron.runs", params);

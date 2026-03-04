@@ -67,7 +67,6 @@ export function renderSidebar(sidebarEl) {
   const pages = [
     { id: "connections", labelKey: "nav.connections", icon: "M" },
     { id: "chat", labelKey: "nav.chat", icon: "C" },
-    { id: "status", labelKey: "nav.status", icon: "S" },
     { id: "cron", labelKey: "nav.cron", icon: "T" },
   ];
 

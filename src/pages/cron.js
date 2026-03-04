@@ -181,7 +181,7 @@ async function loadRuns(client, jobId) {
   });
 
   try {
-    const result = await client.getCronRuns(jobId, { limit: 20 });
+    const result = await client.getCronRuns(jobId);
     const runs = result?.runs || result?.items || [];
 
     if (runs.length === 0) {
