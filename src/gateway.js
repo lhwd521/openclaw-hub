@@ -83,7 +83,7 @@ export class OpenClawClient {
                 id: "gateway-client",
                 version: "1.0.0",
                 platform: "web",
-                mode: "cli",
+                mode: "ui",
                 displayName: this.username || "Hub User",
                 deviceFamily: "desktop",
                 instanceId: this.instanceId,
