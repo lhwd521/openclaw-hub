@@ -106,7 +106,7 @@ export function renderChat(container) {
     loadHistory(client, messagesEl);
   }
 
-  // Stream events
+  // Stream events — follows OpenClaw's own chat event handling pattern
   if (client) {
     let streamContent = "";
     let streamEl = null;
@@ -115,7 +115,6 @@ export function renderChat(container) {
     function resetBusyTimer() {
       if (busyTimer) clearTimeout(busyTimer);
       busyTimer = setTimeout(() => {
-        // Safety net: if busy for 2 minutes without any event, force reset
         if (streamEl) {
           streamEl = null;
           streamContent = "";
@@ -133,40 +132,54 @@ export function renderChat(container) {
         }
         resetBusyTimer();
         if (payload.message?.content) {
-          const textParts = Array.isArray(payload.message.content)
-            ? payload.message.content.filter((c) => c.type === "text").map((c) => c.text)
-            : [String(payload.message.content)];
-          streamContent += textParts.join("");
+          // Delta contains FULL accumulated text (replacement, not increment)
+          // This matches OpenClaw's own implementation
+          const next = extractMessageText(payload.message);
+          if (next && next.length >= streamContent.length) {
+            streamContent = next;
+          }
           updateStreamMessage(streamEl, streamContent);
           scrollToBottom(messagesEl);
         }
       } else if (payload.state === "final" || payload.state === "aborted" || payload.state === "error") {
         if (busyTimer) { clearTimeout(busyTimer); busyTimer = null; }
-        if (streamEl) {
-          if (payload.state === "error" && payload.errorMessage) {
-            updateStreamMessage(streamEl, streamContent + "\n\n[Error: " + payload.errorMessage + "]");
-          } else if (payload.state === "final" && payload.message) {
-            const finalText = extractMessageText(payload.message);
-            if (finalText) {
-              updateStreamMessage(streamEl, finalText);
-              scrollToBottom(messagesEl);
-            }
+        if (payload.state === "error") {
+          if (streamEl) {
+            updateStreamMessage(streamEl, streamContent + "\n\n[Error: " + (payload.errorMessage || "unknown error") + "]");
           }
-          streamEl = null;
-          streamContent = "";
-        } else if (payload.state === "final" && payload.message) {
-          const text = extractMessageText(payload.message);
-          if (text) {
-            appendMessage(messagesEl, "assistant", text);
+        } else if (payload.state === "final" || payload.state === "aborted") {
+          // Use final message if available; fallback to accumulated stream
+          const finalText = payload.message ? extractMessageText(payload.message) : "";
+          if (streamEl) {
+            updateStreamMessage(streamEl, finalText || streamContent);
+            scrollToBottom(messagesEl);
+          } else if (finalText) {
+            appendMessage(messagesEl, "assistant", finalText);
             scrollToBottom(messagesEl);
           }
         }
+        streamEl = null;
+        streamContent = "";
         statusEl.innerHTML = "";
         store.setBusy(connId, false);
       }
     });
 
+    // On reconnect, clear orphaned stream state (same as OpenClaw's onHello handler)
+    const reconnectUnsub = client.on("connected", () => {
+      if (streamEl) {
+        // Save partial stream as a message if there's content
+        if (streamContent.trim()) {
+          updateStreamMessage(streamEl, streamContent);
+        }
+        streamEl = null;
+        streamContent = "";
+      }
+      statusEl.innerHTML = "";
+    });
+
     chatUnsubs.push(chatUnsub);
+    chatUnsubs.push(reconnectUnsub);
   }
 
   async function sendMessage() {
