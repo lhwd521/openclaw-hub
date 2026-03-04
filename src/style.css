@@ -459,6 +459,24 @@ textarea {
   padding: 4px;
 }
 
+.message-image {
+  max-width: 300px;
+  max-height: 300px;
+  border-radius: var(--radius-sm);
+  margin-top: 8px;
+  display: block;
+  cursor: pointer;
+}
+
+.message-image:hover {
+  opacity: 0.85;
+}
+
+.message-text + .message-image,
+.message-image + .message-image {
+  margin-top: 6px;
+}
+
 .chat-input-area {
   padding: 16px 24px;
   border-top: 1px solid var(--border);

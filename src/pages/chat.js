@@ -188,7 +188,7 @@ export function renderChat(container) {
     if (!client || !isConnected) return;
 
     const displayText = text || t("chat.attachment");
-    appendMessage(messagesEl, "user", displayText);
+    appendMessage(messagesEl, "user", displayText, attachments);
     scrollToBottom(messagesEl);
 
     inputEl.value = "";
@@ -226,9 +226,14 @@ async function loadHistory(client, messagesEl) {
     if (result?.messages) {
       messagesEl.innerHTML = "";
       for (const msg of result.messages) {
-        const text = extractMessageText(msg);
-        if (text) {
-          appendMessage(messagesEl, msg.role, text);
+        // Pass raw content array to renderMessage so images are displayed
+        if (Array.isArray(msg.content) && msg.content.length > 0) {
+          appendMessage(messagesEl, msg.role, msg.content);
+        } else {
+          const text = extractMessageText(msg);
+          if (text) {
+            appendMessage(messagesEl, msg.role, text);
+          }
         }
       }
       scrollToBottom(messagesEl);
@@ -238,8 +243,8 @@ async function loadHistory(client, messagesEl) {
   }
 }
 
-function appendMessage(container, role, text) {
-  const el = renderMessage(role, text);
+function appendMessage(container, role, content, attachments) {
+  const el = renderMessage(role, content, attachments);
   container.appendChild(el);
 }
 
