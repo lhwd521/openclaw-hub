@@ -207,8 +207,17 @@ export class OpenClawClient {
     this._stopHeartbeat();
     this.heartbeatTimer = setInterval(() => {
       if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-        // Send a lightweight ping request
-        this.request("health", {}).catch(() => {});
+        // Send a lightweight ping request; if it fails, force reconnect
+        this.request("health", {}).catch(() => {
+          console.warn("[gateway] heartbeat failed, forcing reconnect");
+          this._cleanupWs();
+          this.connected = false;
+          this.connId = null;
+          this._emit("disconnected", { code: 4000, reason: "heartbeat failed" });
+          if (this._autoReconnect && !this._manualDisconnect) {
+            this._scheduleReconnect();
+          }
+        });
       }
     }, HEARTBEAT_INTERVAL);
   }

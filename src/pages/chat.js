@@ -110,6 +110,20 @@ export function renderChat(container) {
   if (client) {
     let streamContent = "";
     let streamEl = null;
+    let busyTimer = null;
+
+    function resetBusyTimer() {
+      if (busyTimer) clearTimeout(busyTimer);
+      busyTimer = setTimeout(() => {
+        // Safety net: if busy for 2 minutes without any event, force reset
+        if (streamEl) {
+          streamEl = null;
+          streamContent = "";
+        }
+        statusEl.innerHTML = "";
+        store.setBusy(connId, false);
+      }, 120000);
+    }
 
     const chatUnsub = client.onChat((payload) => {
       if (payload.state === "delta") {
@@ -117,6 +131,7 @@ export function renderChat(container) {
           streamEl = appendStreamMessage(messagesEl);
           statusEl.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div> ${t("chat.generating")}`;
         }
+        resetBusyTimer();
         if (payload.message?.content) {
           const textParts = Array.isArray(payload.message.content)
             ? payload.message.content.filter((c) => c.type === "text").map((c) => c.text)
@@ -126,12 +141,11 @@ export function renderChat(container) {
           scrollToBottom(messagesEl);
         }
       } else if (payload.state === "final" || payload.state === "aborted" || payload.state === "error") {
+        if (busyTimer) { clearTimeout(busyTimer); busyTimer = null; }
         if (streamEl) {
           if (payload.state === "error" && payload.errorMessage) {
             updateStreamMessage(streamEl, streamContent + "\n\n[Error: " + payload.errorMessage + "]");
           } else if (payload.state === "final" && payload.message) {
-            // Use the complete final message to replace partial stream content
-            // This prevents truncation when delta frames are lost over the network
             const finalText = extractMessageText(payload.message);
             if (finalText) {
               updateStreamMessage(streamEl, finalText);
