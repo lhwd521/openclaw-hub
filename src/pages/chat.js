@@ -318,14 +318,13 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
-// Filter presence list: remove disconnected users and system/node entries
+// Filter presence list: remove disconnected users and system entries
 function filterOnlineUsers(users) {
   if (!Array.isArray(users)) return [];
   return users.filter((u) => {
-    // Skip disconnected
     if (u.reason === "disconnect") return false;
-    // Skip system/node entries (mode=node is the OpenClaw agent itself)
-    if (u.mode === "node") return false;
+    if (u.reason === "self") return false;
+    if (u.mode === "node" || u.mode === "gateway") return false;
     return true;
   });
 }
