@@ -51,6 +51,8 @@ const translations = {
     "conn.fill_all": "请填写所有字段",
     "conn.fill_url_token": "请填写地址和密钥",
     "conn.connected_to": "已连接到",
+    "conn.reconnected": "已重新连接",
+    "conn.reconnecting": "正在重连...",
 
     // Chat
     "chat.no_connection": "未选择连接",
@@ -171,6 +173,8 @@ const translations = {
     "conn.fill_all": "Please fill in all fields",
     "conn.fill_url_token": "Please fill in address and token",
     "conn.connected_to": "Connected to",
+    "conn.reconnected": "Reconnected",
+    "conn.reconnecting": "Reconnecting...",
 
     // Chat
     "chat.no_connection": "No connection selected",

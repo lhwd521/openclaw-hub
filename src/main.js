@@ -57,9 +57,20 @@ class ConnectionManager {
 
     // Listen for disconnection
     client.on("disconnected", () => {
-      store.setConnectionStatus(connectionId, "disconnected");
+      store.setConnectionStatus(connectionId, "reconnecting");
       store.setBusy(connectionId, false);
       store.setOnlineUsers(connectionId, []);
+    });
+
+    // Listen for reconnecting
+    client.on("reconnecting", () => {
+      store.setConnectionStatus(connectionId, "reconnecting");
+    });
+
+    // Listen for successful reconnection
+    client.on("connected", () => {
+      store.setConnectionStatus(connectionId, "connected");
+      showToast(t("conn.reconnected") || "Reconnected", "success");
     });
 
     client.on("error", () => {

@@ -2,6 +2,8 @@
 // Implements protocol v3 compatible with OpenClaw Gateway
 
 const PROTOCOL_VERSION = 3;
+const HEARTBEAT_INTERVAL = 25000; // 25s ping to keep connection alive
+const RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 15000]; // escalating delays
 
 export class OpenClawClient {
   constructor(url, token, username) {
@@ -13,18 +15,29 @@ export class OpenClawClient {
     this.pendingRequests = new Map();
     this.listeners = new Map();
     this.reconnectTimer = null;
+    this.heartbeatTimer = null;
     this.connId = null;
     this.snapshot = null;
     this.features = null;
     this.instanceId = crypto.randomUUID();
+    this._autoReconnect = true;
+    this._reconnectAttempt = 0;
+    this._manualDisconnect = false;
   }
 
   // --- Connection Management ---
 
   connect() {
+    this._manualDisconnect = false;
+    this._autoReconnect = true;
+    this._reconnectAttempt = 0;
+    return this._doConnect();
+  }
+
+  _doConnect() {
     return new Promise((resolve, reject) => {
       if (this.ws) {
-        this.disconnect();
+        this._cleanupWs();
       }
 
       const wsUrl = this.url.replace(/^http/, "ws").replace(/\/$/, "");
@@ -94,9 +107,11 @@ export class OpenClawClient {
             resolve: (payload) => {
               clearTimeout(timeout);
               this.connected = true;
+              this._reconnectAttempt = 0;
               this.connId = payload.server?.connId;
               this.snapshot = payload.snapshot;
               this.features = payload.features;
+              this._startHeartbeat();
               this._emit("connected", payload);
               resolve(payload);
             },
@@ -143,6 +158,7 @@ export class OpenClawClient {
 
       this.ws.onclose = (event) => {
         clearTimeout(timeout);
+        this._stopHeartbeat();
         const wasConnected = this.connected;
         this.connected = false;
         this.connId = null;
@@ -154,7 +170,14 @@ export class OpenClawClient {
         this.pendingRequests.clear();
 
         if (wasConnected) {
-          this._emit("disconnected", { code: event.code, reason: event.reason });
+          this._emit("disconnected", {
+            code: event.code,
+            reason: event.reason,
+          });
+          // Auto reconnect if not manually disconnected
+          if (this._autoReconnect && !this._manualDisconnect) {
+            this._scheduleReconnect();
+          }
         } else if (!challengeReceived) {
           reject(new Error("Connection closed before handshake"));
         }
@@ -162,15 +185,63 @@ export class OpenClawClient {
     });
   }
 
+  _scheduleReconnect() {
+    if (this.reconnectTimer) return;
+    const delay =
+      RECONNECT_DELAYS[
+        Math.min(this._reconnectAttempt, RECONNECT_DELAYS.length - 1)
+      ];
+    this._reconnectAttempt++;
+    this._emit("reconnecting", { attempt: this._reconnectAttempt, delay });
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
+      try {
+        await this._doConnect();
+      } catch {
+        // _doConnect's onclose will trigger another reconnect
+      }
+    }, delay);
+  }
+
+  _startHeartbeat() {
+    this._stopHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        // Send a lightweight ping request
+        this.request("health", {}).catch(() => {});
+      }
+    }, HEARTBEAT_INTERVAL);
+  }
+
+  _stopHeartbeat() {
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
+    }
+  }
+
+  _cleanupWs() {
+    if (this.ws) {
+      this.ws.onopen = null;
+      this.ws.onmessage = null;
+      this.ws.onerror = null;
+      this.ws.onclose = null;
+      try {
+        this.ws.close();
+      } catch {}
+      this.ws = null;
+    }
+  }
+
   disconnect() {
+    this._manualDisconnect = true;
+    this._autoReconnect = false;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
     }
-    if (this.ws) {
-      this.ws.close();
-      this.ws = null;
-    }
+    this._stopHeartbeat();
+    this._cleanupWs();
     this.connected = false;
     this.connId = null;
   }
@@ -197,7 +268,12 @@ export class OpenClawClient {
         }
       }, 30000);
 
-      this.ws.send(JSON.stringify(frame));
+      try {
+        this.ws.send(JSON.stringify(frame));
+      } catch (err) {
+        this.pendingRequests.delete(id);
+        reject(new Error("Failed to send: " + err.message));
+      }
     });
   }
 

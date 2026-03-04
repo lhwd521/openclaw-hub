@@ -169,6 +169,12 @@ export function renderChat(container) {
     } catch (err) {
       showToast(t("chat.send_fail") + err.message, "error");
       store.setBusy(connId, false);
+      // Restore message to input if send failed so user can retry
+      if (text) {
+        inputEl.value = text;
+        inputEl.style.height = "auto";
+        inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + "px";
+      }
     }
   }
 }
