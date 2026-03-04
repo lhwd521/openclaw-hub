@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # =====================================================
-# OpenClaw VPS One-Click Setup Script
-# Installs OpenClaw gateway + HTTPS tunnel (ngrok or cloudflared)
+# OpenClaw Hub - VPS Gateway + Tunnel Setup Script
+# Configures OpenClaw gateway and starts HTTPS tunnel
+# Requires: OpenClaw already installed on the VPS
 #
 # Usage:
 #   bash vps-setup.sh --ngrok YOUR_NGROK_TOKEN
@@ -48,40 +49,6 @@ fi
 
 # === Install dependencies ===
 
-install_nodejs() {
-  if command -v node &>/dev/null; then
-    NODE_VER=$(node -v | sed 's/v//' | cut -d. -f1)
-    if [ "$NODE_VER" -ge 22 ]; then
-      return
-    fi
-  fi
-  echo "[*] Installing Node.js 22..."
-  if command -v apt-get &>/dev/null; then
-    curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-    sudo apt-get install -y nodejs
-  elif command -v dnf &>/dev/null; then
-    curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
-    sudo dnf install -y nodejs
-  elif command -v yum &>/dev/null; then
-    curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
-    sudo yum install -y nodejs
-  else
-    echo "[!] Could not detect package manager. Please install Node.js 22+ manually."
-    exit 1
-  fi
-}
-
-install_pnpm() {
-  if command -v pnpm &>/dev/null; then return; fi
-  npm install -g pnpm
-}
-
-install_openclaw() {
-  if command -v openclaw &>/dev/null; then return; fi
-  echo "[*] Installing openclaw..."
-  curl -fsSL https://openclaw.sh | bash
-}
-
 install_ngrok() {
   if command -v ngrok &>/dev/null; then return; fi
   echo "[*] Installing ngrok..."
@@ -116,8 +83,16 @@ install_cloudflared() {
   fi
 }
 
-echo "[*] Installing dependencies..."
-install_openclaw
+# === Check OpenClaw is installed ===
+
+if ! command -v openclaw &>/dev/null; then
+  echo "[!] OpenClaw is not installed. Please install it first before running this script."
+  echo "    Visit: https://openclaw.sh"
+  exit 1
+fi
+echo "[OK] OpenClaw found: $(openclaw --version 2>/dev/null || echo 'unknown version')"
+
+# === Install tunnel dependency ===
 
 if [ "$TUNNEL_MODE" = "ngrok" ]; then
   install_ngrok

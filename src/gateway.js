@@ -2,7 +2,7 @@
 // Implements protocol v3 compatible with OpenClaw Gateway
 
 const PROTOCOL_VERSION = 3;
-const HEARTBEAT_INTERVAL = 25000; // 25s ping to keep connection alive
+const HEARTBEAT_INTERVAL = 15000; // 15s — also polls presence for new clients
 const RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 15000]; // escalating delays
 
 // Stable instanceId per URL+username within a browser tab.
@@ -230,6 +230,12 @@ export class OpenClawClient {
             this._scheduleReconnect();
           }
         });
+        // Poll presence to detect new clients (gateway doesn't broadcast on connect)
+        this.request("system-presence", {}).then((presence) => {
+          if (Array.isArray(presence)) {
+            this._emit("presence", { presence });
+          }
+        }).catch(() => {});
       }
     }, HEARTBEAT_INTERVAL);
   }
