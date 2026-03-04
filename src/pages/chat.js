@@ -30,8 +30,8 @@ export function renderChat(container) {
     return;
   }
 
-  // Online users for this connection
-  const onlineUsers = state.onlineUsers[connId] || [];
+  // Online users for this connection (filter out disconnected and system entries)
+  const onlineUsers = filterOnlineUsers(state.onlineUsers[connId] || []);
   const onlineNames = onlineUsers
     .map((u) => u.host || u.displayName || u.instanceId || "")
     .filter((n) => n);
@@ -192,7 +192,7 @@ export function renderChat(container) {
     const presenceUnsub = client.onPresence((payload) => {
       const bar = container.querySelector("#online-users-bar");
       if (payload?.presence) {
-        const names = payload.presence
+        const names = filterOnlineUsers(payload.presence)
           .map((u) => u.host || u.displayName || "")
           .filter((n) => n);
         if (names.length > 0) {
@@ -316,4 +316,16 @@ function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str;
   return div.innerHTML;
+}
+
+// Filter presence list: remove disconnected users and system/node entries
+function filterOnlineUsers(users) {
+  if (!Array.isArray(users)) return [];
+  return users.filter((u) => {
+    // Skip disconnected
+    if (u.reason === "disconnect") return false;
+    // Skip system/node entries (mode=node is the OpenClaw agent itself)
+    if (u.mode === "node") return false;
+    return true;
+  });
 }

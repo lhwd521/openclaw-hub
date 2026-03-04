@@ -32,7 +32,7 @@ export function renderSidebar(sidebarEl) {
     const status = state.connectionStatuses[conn.id] || "disconnected";
     const isActive = state.activeConnectionId === conn.id;
     const busy = state.isBusy[conn.id] || false;
-    const onlineUsers = state.onlineUsers[conn.id] || [];
+    const onlineUsers = (state.onlineUsers[conn.id] || []).filter((u) => u.reason !== "disconnect" && u.mode !== "node");
     const userCount = onlineUsers.length;
     const userNames = onlineUsers
       .map((u) => u.host || u.displayName || "")
