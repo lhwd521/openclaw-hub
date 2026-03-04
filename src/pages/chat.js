@@ -2,7 +2,7 @@
 
 import { store } from "../store.js";
 import { connectionManager } from "../main.js";
-import { renderMessage } from "../components/message.js";
+import { renderMessage, renderMarkdown } from "../components/message.js";
 import { createFileUpload } from "../components/file-upload.js";
 import { showToast } from "../components/sidebar.js";
 import { t } from "../i18n.js";
@@ -296,7 +296,14 @@ function appendStreamMessage(container) {
 
 function updateStreamMessage(el, text) {
   const bubble = el.querySelector(".message-bubble");
-  if (bubble) bubble.textContent = text;
+  if (bubble) {
+    // Clear existing content and render with markdown
+    bubble.innerHTML = "";
+    const div = document.createElement("div");
+    div.className = "message-text";
+    div.innerHTML = renderMarkdown(text);
+    bubble.appendChild(div);
+  }
 }
 
 function extractMessageText(msg) {
