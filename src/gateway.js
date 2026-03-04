@@ -5,6 +5,18 @@ const PROTOCOL_VERSION = 3;
 const HEARTBEAT_INTERVAL = 25000; // 25s ping to keep connection alive
 const RECONNECT_DELAYS = [1000, 2000, 5000, 10000, 15000]; // escalating delays
 
+// Stable instanceId per URL+username within a browser tab.
+// Prevents duplicate presence entries on reconnect.
+function getStableInstanceId(url, username) {
+  const key = `openclaw-hub.instanceId.${url}.${username}`;
+  let id = sessionStorage.getItem(key);
+  if (!id) {
+    id = crypto.randomUUID();
+    sessionStorage.setItem(key, id);
+  }
+  return id;
+}
+
 export class OpenClawClient {
   constructor(url, token, username) {
     this.url = url;
@@ -19,7 +31,7 @@ export class OpenClawClient {
     this.connId = null;
     this.snapshot = null;
     this.features = null;
-    this.instanceId = crypto.randomUUID();
+    this.instanceId = getStableInstanceId(url, username);
     this._autoReconnect = true;
     this._reconnectAttempt = 0;
     this._manualDisconnect = false;
