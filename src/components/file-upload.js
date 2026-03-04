@@ -1,6 +1,10 @@
 // File upload component (images only, converts to base64 attachments)
+// Images are compressed before sending to stay within Cloudflare Tunnel limits
 
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB original file limit
+const MAX_IMAGE_DIMENSION = 1024; // max width or height after resize
+const JPEG_QUALITY = 0.7; // compression quality
+const MAX_ATTACHMENTS = 4; // max images per message
 const ACCEPTED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
 export function createFileUpload(triggerEl, previewEl, onChange) {
@@ -22,13 +26,17 @@ export function createFileUpload(triggerEl, previewEl, onChange) {
         alert(`File "${file.name}" exceeds 5MB limit`);
         continue;
       }
+      if (files.length >= MAX_ATTACHMENTS) {
+        alert(`Maximum ${MAX_ATTACHMENTS} images per message`);
+        break;
+      }
 
-      const base64 = await readFileAsBase64(file);
+      const compressed = await compressImage(file);
       files.push({
         type: "image",
-        mimeType: file.type,
+        mimeType: compressed.mimeType,
         fileName: file.name,
-        content: base64,
+        content: compressed.base64,
       });
     }
     input.value = "";
@@ -71,15 +79,48 @@ export function createFileUpload(triggerEl, previewEl, onChange) {
   };
 }
 
-function readFileAsBase64(file) {
+// Compress image using canvas: resize + JPEG compression
+// Keeps images under ~200KB typically, safe for Cloudflare Tunnel
+function compressImage(file) {
   return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      // Result is data:image/...;base64,xxx - extract just the base64 part
-      const base64 = reader.result.split(",")[1];
-      resolve(base64);
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+
+      // Scale down if larger than max dimension
+      if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
+        if (width > height) {
+          height = Math.round((height * MAX_IMAGE_DIMENSION) / width);
+          width = MAX_IMAGE_DIMENSION;
+        } else {
+          width = Math.round((width * MAX_IMAGE_DIMENSION) / height);
+          height = MAX_IMAGE_DIMENSION;
+        }
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, width, height);
+
+      // Always output as JPEG for smaller size (except GIF)
+      const outputType = file.type === "image/gif" ? "image/png" : "image/jpeg";
+      const quality = outputType === "image/jpeg" ? JPEG_QUALITY : undefined;
+      const dataUrl = canvas.toDataURL(outputType, quality);
+      const base64 = dataUrl.split(",")[1];
+
+      resolve({
+        base64,
+        mimeType: outputType,
+      });
+
+      URL.revokeObjectURL(img.src);
     };
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+    img.onerror = () => {
+      URL.revokeObjectURL(img.src);
+      reject(new Error("Failed to load image"));
+    };
+    img.src = URL.createObjectURL(file);
   });
 }
