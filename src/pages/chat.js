@@ -6,6 +6,7 @@ import { renderMessage, renderMarkdown } from "../components/message.js";
 import { createFileUpload } from "../components/file-upload.js";
 import { showToast } from "../components/sidebar.js";
 import { t } from "../i18n.js";
+import { getSubordinates, getNodeRole } from "./org-chart.js";
 
 let chatUnsubs = [];
 let pendingAttachments = [];
@@ -19,6 +20,11 @@ export function renderChat(container) {
   const conn = connId ? store.getConnection(connId) : null;
   const isConnected = state.connectionStatuses[connId] === "connected";
   const busy = state.isBusy[connId] || false;
+
+  // Check if this connection has subordinates (is a manager)
+  const subordinates = connId ? getSubordinates(connId) : [];
+  const isManager = subordinates.length > 0;
+  const teamRoutingEnabled = localStorage.getItem("openclaw-hub.team-routing") === "true";
 
   if (!connId || !conn) {
     container.innerHTML = `
@@ -43,9 +49,20 @@ export function renderChat(container) {
         <div style="display:flex;gap:8px;align-items:center">
           <span class="status-dot ${isConnected ? "connected" : "disconnected"}" style="display:inline-block"></span>
           <span style="font-size:13px;color:var(--text-secondary)">${isConnected ? t("chat.connected") : t("chat.disconnected")}</span>
+          ${isManager ? `
+            <label class="routing-toggle" style="margin-left:12px">
+              <input type="checkbox" id="team-routing-toggle" ${teamRoutingEnabled ? "checked" : ""}>
+              <span>🤖 ${state.lang === "zh" ? "团队协作" : "Team Mode"}</span>
+            </label>
+          ` : ""}
           ${busy ? `<button class="btn btn-sm btn-danger" id="abort-btn">${t("chat.abort")}</button>` : ""}
         </div>
       </div>
+      ${isManager && subordinates.length > 0 ? `
+        <div class="team-info-bar">
+          👥 ${state.lang === "zh" ? "管理" : "Managing"} ${subordinates.length} ${state.lang === "zh" ? "个下属" : "subordinates"}
+        </div>
+      ` : ""}
       ${onlineNames.length > 0 ? `<div class="online-users-bar" id="online-users-bar">${t("status.online_users")}: ${onlineNames.map((n) => `<span class="online-user-tag">${escapeHtml(n)}</span>`).join("")}</div>` : ""}
       <div class="chat-messages" id="chat-messages"></div>
       <div class="chat-input-area">
@@ -69,6 +86,20 @@ export function renderChat(container) {
   const sendBtn = container.querySelector("#send-btn");
   const abortBtn = container.querySelector("#abort-btn");
   const statusEl = container.querySelector("#chat-status");
+  const teamRoutingToggle = container.querySelector("#team-routing-toggle");
+
+  // Team routing toggle
+  if (teamRoutingToggle) {
+    teamRoutingToggle.addEventListener("change", (e) => {
+      localStorage.setItem("openclaw-hub.team-routing", e.target.checked);
+      showToast(
+        e.target.checked
+          ? (state.lang === "zh" ? "已启用团队协作模式" : "Team mode enabled")
+          : (state.lang === "zh" ? "已禁用团队协作模式" : "Team mode disabled"),
+        "success"
+      );
+    });
+  }
 
   // File upload
   const fileUpload = createFileUpload(
@@ -225,6 +256,9 @@ export function renderChat(container) {
     if (!text && pendingAttachments.length === 0) return;
     if (!client || !isConnected) return;
 
+    // Check if should use team routing
+    const useTeamRouting = isManager && teamRoutingEnabled && !pendingAttachments.length;
+
     // Separate images and text-based files
     const imageAttachments = pendingAttachments.filter(f => f.type === "image");
     const textFiles = pendingAttachments.filter(f => f.type === "text");
@@ -251,8 +285,14 @@ export function renderChat(container) {
 
     try {
       store.setBusy(connId, true);
-      // Send only images as attachments, text content is in messageText
-      await client.sendMessage("main", messageText, imageAttachments);
+
+      if (useTeamRouting) {
+        // Use team routing
+        await sendWithTeamRouting(messageText, messagesEl, statusEl);
+      } else {
+        // Send only images as attachments, text content is in messageText
+        await client.sendMessage("main", messageText, imageAttachments);
+      }
     } catch (err) {
       showToast(t("chat.send_fail") + err.message, "error");
       store.setBusy(connId, false);
@@ -263,6 +303,54 @@ export function renderChat(container) {
         inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + "px";
       }
     }
+  }
+
+  async function sendWithTeamRouting(userMessage, messagesEl, statusEl) {
+    // Build team context
+    const teamContext = buildTeamContext(connId, subordinates);
+    const fullPrompt = `${teamContext}\n\n用户任务：${userMessage}`;
+
+    // Send to manager
+    await client.sendMessage("main", fullPrompt);
+  }
+
+  function buildTeamContext(managerId, subordinateIds) {
+    const state = store.getState();
+    const lang = state.lang || "zh";
+
+    const teamMembers = subordinateIds
+      .map(subId => {
+        const conn = store.getConnection(subId);
+        const role = getNodeRole(subId);
+        const status = state.connectionStatuses[subId];
+        if (!conn) return null;
+        return {
+          name: conn.name,
+          role: role || (lang === "zh" ? "未设置职责" : "No role set"),
+          online: status === "connected"
+        };
+      })
+      .filter(m => m !== null);
+
+    if (teamMembers.length === 0) {
+      return lang === "zh"
+        ? "[系统信息] 你是管理者，但当前没有可用的团队成员。"
+        : "[System] You are a manager, but no team members are currently available.";
+    }
+
+    const header = lang === "zh"
+      ? "[系统信息] 你是团队管理者，可以协调以下团队成员完成任务："
+      : "[System] You are a team manager. You can coordinate the following team members:";
+
+    const memberList = teamMembers
+      .map((m, i) => `${i + 1}. ${m.name} (${m.online ? (lang === "zh" ? "在线" : "online") : (lang === "zh" ? "离线" : "offline")})\n   ${lang === "zh" ? "职责" : "Role"}: ${m.role}`)
+      .join("\n\n");
+
+    const instructions = lang === "zh"
+      ? `\n\n如果需要团队协作，请返回 JSON 格式：\n{\n  "delegate": true,\n  "tasks": [\n    {"member": "成员名称", "task": "具体任务描述"}\n  ],\n  "reason": "分配理由"\n}\n\n如果你自己能完成，直接回答即可。`
+      : `\n\nIf team collaboration is needed, return JSON format:\n{\n  "delegate": true,\n  "tasks": [\n    {"member": "member name", "task": "specific task description"}\n  ],\n  "reason": "delegation reason"\n}\n\nIf you can complete it yourself, answer directly.`;
+
+    return `${header}\n\n${memberList}${instructions}`;
   }
 }
 

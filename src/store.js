@@ -3,6 +3,7 @@
 const KEYS = {
   username: "openclaw-hub.username",
   connections: "openclaw-hub.connections",
+  orgStructure: "openclaw-hub.org-structure",
 };
 
 function loadJSON(key, fallback) {
@@ -24,8 +25,9 @@ class Store {
     this.state = {
       username: localStorage.getItem(KEYS.username) || "",
       connections: loadJSON(KEYS.connections, []),
+      orgStructure: loadJSON(KEYS.orgStructure, { nodes: {}, roots: [] }),
       activeConnectionId: null,
-      activePage: "connections", // connections | chat | status | cron
+      activePage: "connections", // connections | org-chart | chat | status | cron
       connectionStatuses: {}, // { [id]: "connected" | "disconnected" | "connecting" | "error" }
       onlineUsers: {}, // { [connectionId]: PresenceEntry[] }
       isBusy: {}, // { [connectionId]: boolean }
@@ -54,6 +56,7 @@ class Store {
       localStorage.setItem(KEYS.username, this.state.username);
     }
     saveJSON(KEYS.connections, this.state.connections);
+    saveJSON(KEYS.orgStructure, this.state.orgStructure);
   }
 
   _notify() {
@@ -115,12 +118,22 @@ class Store {
     return this.state.connections.find((c) => c.id === id) || null;
   }
 
+  getConnections() {
+    return this.state.connections;
+  }
+
   setActiveConnection(id) {
     this.update({ activeConnectionId: id });
   }
 
   setActivePage(page) {
     this.update({ activePage: page });
+  }
+
+  // --- Organization Structure ---
+
+  setState(partial) {
+    this.update(partial);
   }
 
   // --- Connection Status ---

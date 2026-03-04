@@ -65,15 +65,16 @@ export function renderSidebar(sidebarEl) {
   // Navigation items
   const nav = sidebarEl.querySelector("#sidebar-nav");
   const pages = [
-    { id: "connections", labelKey: "nav.connections", icon: "M" },
-    { id: "chat", labelKey: "nav.chat", icon: "C" },
-    { id: "cron", labelKey: "nav.cron", icon: "T" },
+    { id: "connections", labelKey: "nav.connections", icon: "🔗" },
+    { id: "org-chart", labelKey: "nav.org_chart", icon: "🏢" },
+    { id: "chat", labelKey: "nav.chat", icon: "💬" },
+    { id: "cron", labelKey: "nav.cron", icon: "⏰" },
   ];
 
   for (const page of pages) {
     const item = document.createElement("div");
     item.className = `nav-item${state.activePage === page.id ? " active" : ""}`;
-    item.innerHTML = `<span style="width:20px;text-align:center;font-weight:600;font-size:12px;color:var(--text-muted)">${page.icon}</span> ${t(page.labelKey)}`;
+    item.innerHTML = `<span style="font-size:16px">${page.icon}</span> ${t(page.labelKey)}`;
     item.addEventListener("click", () => {
       store.setActivePage(page.id);
     });

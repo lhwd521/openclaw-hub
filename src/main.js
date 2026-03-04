@@ -6,6 +6,7 @@ import { renderLogin } from "./pages/login.js";
 import { renderConnections } from "./pages/connections.js";
 import { renderChat, cleanupChat } from "./pages/chat.js";
 import { renderCron, cleanupCron } from "./pages/cron.js";
+import { renderOrgChart } from "./pages/org-chart.js";
 import { renderSidebar, showToast } from "./components/sidebar.js";
 import { t } from "./i18n.js";
 
@@ -178,6 +179,13 @@ function render() {
       if (pageChanged || connStatusChanged) {
         main.innerHTML = "";
         renderConnections(main);
+      }
+      break;
+    case "org-chart":
+      // Re-render when page opened or connections changed
+      if (pageChanged || connStatusChanged) {
+        main.innerHTML = "";
+        renderOrgChart(main);
       }
       break;
     case "chat":
