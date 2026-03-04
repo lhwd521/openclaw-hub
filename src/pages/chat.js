@@ -188,15 +188,16 @@ export function renderChat(container) {
     if (!client || !isConnected) return;
 
     const displayText = text || t("chat.attachment");
-    appendMessage(messagesEl, "user", displayText, attachments);
-    scrollToBottom(messagesEl);
-
-    inputEl.value = "";
-    inputEl.style.height = "auto";
 
     const attachments = [...pendingAttachments];
     pendingAttachments = [];
     if (fileUpload.clear) fileUpload.clear();
+
+    appendMessage(messagesEl, "user", displayText, attachments.length > 0 ? attachments : undefined);
+    scrollToBottom(messagesEl);
+
+    inputEl.value = "";
+    inputEl.style.height = "auto";
 
     try {
       store.setBusy(connId, true);
