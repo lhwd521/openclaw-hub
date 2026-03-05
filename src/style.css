@@ -1642,3 +1642,23 @@ textarea {
   background: none;
   padding: 0;
 }
+
+.message-bubble .message-link {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s;
+}
+
+.message-bubble .message-link:hover {
+  border-bottom-color: var(--accent);
+}
+
+.chat-message.user .message-link {
+  color: #fff;
+  border-bottom-color: rgba(255, 255, 255, 0.3);
+}
+
+.chat-message.user .message-link:hover {
+  border-bottom-color: #fff;
+}

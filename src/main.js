@@ -71,6 +71,17 @@ class ConnectionManager {
     client.on("connected", () => {
       store.setConnectionStatus(connectionId, "connected");
       showToast(t("conn.reconnected") || "Reconnected", "success");
+
+      // Re-fetch presence data after reconnection
+      client.request("system-presence", {})
+        .then((presence) => {
+          if (Array.isArray(presence)) {
+            store.setOnlineUsers(connectionId, presence);
+          }
+        })
+        .catch((err) => {
+          console.warn("Failed to fetch presence after reconnection:", err);
+        });
     });
 
     client.on("error", () => {

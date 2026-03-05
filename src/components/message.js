@@ -111,6 +111,13 @@ export function renderMarkdown(text) {
   // Inline code: `...`
   html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
 
+  // URLs: convert plain text URLs to clickable links
+  // Match http/https URLs, avoiding trailing punctuation
+  html = html.replace(
+    /(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g,
+    '<a href="$1" target="_blank" rel="noopener noreferrer" class="message-link">$1</a>'
+  );
+
   // Bold: **text** or __text__
   html = html.replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
   html = html.replace(/__(.+?)__/g, "<strong>$1</strong>");
