@@ -354,6 +354,10 @@ export class OpenClawClient {
     return this.request("cron.run", { id, mode: "force" });
   }
 
+  removeCronJob(id) {
+    return this.request("cron.remove", { id });
+  }
+
   getCronRuns(jobId) {
     const params = {};
     if (jobId) {

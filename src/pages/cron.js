@@ -144,6 +144,7 @@ function renderCronTable(jobs, client) {
         <button class="btn btn-sm detail-job-btn" data-id="${escapeHtml(job.id)}">${t("cron.detail")}</button>
         <button class="btn btn-sm run-job-btn" data-id="${escapeHtml(job.id)}">${t("cron.run_now")}</button>
         <button class="btn btn-sm view-runs-btn" data-id="${escapeHtml(job.id)}">${t("cron.runs")}</button>
+        <button class="btn btn-sm btn-danger remove-job-btn" data-id="${escapeHtml(job.id)}">${t("cron.remove")}</button>
       </td>
     `;
     tbody.appendChild(tr);
@@ -177,6 +178,19 @@ function renderCronTable(jobs, client) {
       }
     } else if (btn.classList.contains("view-runs-btn")) {
       loadRuns(client, jobId);
+    } else if (btn.classList.contains("remove-job-btn")) {
+      if (confirm(t("cron.remove_confirm"))) {
+        btn.disabled = true;
+        try {
+          await client.removeCronJob(jobId);
+          showToast(t("cron.job_removed"), "success");
+          loadCronData(client); // Reload the list
+        } catch (err) {
+          showToast(t("cron.remove_fail") + err.message, "error");
+        } finally {
+          btn.disabled = false;
+        }
+      }
     }
   });
 }
@@ -267,10 +281,12 @@ async function loadRuns(client, jobId) {
 
   try {
     const result = await client.getCronRuns(jobId);
+    console.log('[DEBUG] getCronRuns result:', result);
     const runs = result?.runs || result?.items || [];
 
     if (runs.length === 0) {
       runsList.innerHTML = `<p style="color:var(--text-muted)">${t("cron.no_runs")}</p>`;
+      console.log('[DEBUG] No runs found for job:', jobId);
       return;
     }
 
@@ -301,6 +317,7 @@ async function loadRuns(client, jobId) {
       </table>
     `;
   } catch (err) {
+    console.error('[DEBUG] getCronRuns error:', err);
     runsList.innerHTML = `<p style="color:var(--error)">${t("cron.runs_fail")}${escapeHtml(err.message)}</p>`;
   }
 }
