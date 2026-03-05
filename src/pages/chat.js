@@ -163,11 +163,12 @@ export function renderChat(container) {
     const chatUnsub = client.onChat((payload) => {
       if (payload.state === "delta") {
         if (!streamEl) {
-          streamEl = appendStreamMessage(messagesEl);
-          // Add typing indicator inside the message bubble
-          const bubble = streamEl.querySelector(".message-bubble");
-          if (bubble) {
-            bubble.innerHTML = `<div class="typing-indicator-inline"><span></span><span></span><span></span></div>`;
+          // Try to find existing typing indicator element
+          const existingTyping = messagesEl.querySelector(".chat-message.streaming");
+          if (existingTyping) {
+            streamEl = existingTyping;
+          } else {
+            streamEl = appendStreamMessage(messagesEl);
           }
         }
         resetBusyTimer();
@@ -283,6 +284,32 @@ export function renderChat(container) {
     inputEl.value = "";
     inputEl.style.height = "auto";
 
+    // Show typing indicator immediately with timer
+    const typingEl = appendStreamMessage(messagesEl);
+    const bubble = typingEl.querySelector(".message-bubble");
+    if (bubble) {
+      bubble.innerHTML = `
+        <div class="typing-indicator-wrapper">
+          <div class="typing-indicator-inline"><span></span><span></span><span></span></div>
+          <div class="typing-timer">0s</div>
+        </div>
+      `;
+
+      // Start timer
+      let seconds = 0;
+      const timerEl = bubble.querySelector(".typing-timer");
+      const timerInterval = setInterval(() => {
+        seconds++;
+        if (timerEl) {
+          timerEl.textContent = `${seconds}s`;
+        }
+      }, 1000);
+
+      // Store timer ID so we can clear it later
+      typingEl.dataset.timerId = timerInterval;
+    }
+    scrollToBottom(messagesEl);
+
     try {
       store.setBusy(connId, true);
 
@@ -294,6 +321,16 @@ export function renderChat(container) {
         await client.sendMessage("main", messageText, imageAttachments);
       }
     } catch (err) {
+      // Remove typing indicator on error and clear timer
+      if (typingEl) {
+        const timerId = typingEl.dataset.timerId;
+        if (timerId) {
+          clearInterval(parseInt(timerId));
+        }
+        if (typingEl.parentNode) {
+          typingEl.remove();
+        }
+      }
       showToast(t("chat.send_fail") + err.message, "error");
       store.setBusy(connId, false);
       // Restore message to input if send failed so user can retry
@@ -396,6 +433,13 @@ function appendStreamMessage(container) {
 }
 
 function updateStreamMessage(el, text) {
+  // Clear timer if exists
+  const timerId = el.dataset.timerId;
+  if (timerId) {
+    clearInterval(parseInt(timerId));
+    el.dataset.timerId = "";
+  }
+
   const bubble = el.querySelector(".message-bubble");
   if (bubble) {
     // Clear existing content and render with markdown

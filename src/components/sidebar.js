@@ -39,13 +39,16 @@ export function renderSidebar(sidebarEl) {
       .filter((n) => n)
       .join(", ");
 
+    // Determine status dot class: if connected and busy, show as busy (yellow)
+    const dotClass = status === "connected" && busy ? "busy" : status;
+
     const item = document.createElement("div");
     item.className = `connection-item${isActive ? " active" : ""}`;
     item.dataset.id = conn.id;
     item.innerHTML = `
-      <span class="status-dot ${status}"></span>
+      <span class="status-dot ${dotClass}"></span>
       <div class="connection-info">
-        <span class="connection-name">${escapeHtml(conn.name)}${busy ? " " + t("sidebar.busy") : ""}</span>
+        <span class="connection-name">${escapeHtml(conn.name)}</span>
         ${status === "connected" && userCount > 0 ? `<span class="connection-users">${userCount} ${t("status.online_users")}${userNames ? ": " + escapeHtml(userNames) : ""}</span>` : ""}
       </div>
     `;
