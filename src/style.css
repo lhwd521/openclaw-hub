@@ -579,16 +579,7 @@ textarea {
   padding: 10px 12px;
 }
 
-.chat-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0 0;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.typing-indicator {
+/* --- File upload --- */
   display: inline-flex;
   gap: 3px;
 }
@@ -604,9 +595,27 @@ textarea {
 .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
 .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
 
+/* Typing indicator inside message bubble */
+.typing-indicator-inline {
+  display: inline-flex;
+  gap: 4px;
+  padding: 8px 0;
+}
+
+.typing-indicator-inline span {
+  width: 8px;
+  height: 8px;
+  background: var(--text-secondary);
+  border-radius: 50%;
+  animation: typing 1.4s infinite;
+}
+
+.typing-indicator-inline span:nth-child(2) { animation-delay: 0.2s; }
+.typing-indicator-inline span:nth-child(3) { animation-delay: 0.4s; }
+
 @keyframes typing {
-  0%, 60%, 100% { transform: translateY(0); }
-  30% { transform: translateY(-4px); }
+  0%, 60%, 100% { transform: translateY(0); opacity: 1; }
+  30% { transform: translateY(-6px); opacity: 0.7; }
 }
 
 /* --- File upload --- */

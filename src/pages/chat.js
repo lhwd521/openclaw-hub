@@ -76,7 +76,6 @@ export function renderChat(container) {
           <textarea id="chat-input" placeholder="${isConnected ? t("chat.placeholder") : t("chat.placeholder_disabled")}" rows="1" ${isConnected ? "" : "disabled"}></textarea>
           <button class="btn btn-primary" id="send-btn" ${isConnected ? "" : "disabled"}>${t("chat.send")}</button>
         </div>
-        <div class="chat-status" id="chat-status"></div>
       </div>
     </div>
   `;
@@ -85,7 +84,6 @@ export function renderChat(container) {
   const inputEl = container.querySelector("#chat-input");
   const sendBtn = container.querySelector("#send-btn");
   const abortBtn = container.querySelector("#abort-btn");
-  const statusEl = container.querySelector("#chat-status");
   const teamRoutingToggle = container.querySelector("#team-routing-toggle");
 
   // Team routing toggle
@@ -166,7 +164,11 @@ export function renderChat(container) {
       if (payload.state === "delta") {
         if (!streamEl) {
           streamEl = appendStreamMessage(messagesEl);
-          statusEl.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div> ${t("chat.generating")}`;
+          // Add typing indicator inside the message bubble
+          const bubble = streamEl.querySelector(".message-bubble");
+          if (bubble) {
+            bubble.innerHTML = `<div class="typing-indicator-inline"><span></span><span></span><span></span></div>`;
+          }
         }
         resetBusyTimer();
         if (payload.message?.content) {
@@ -198,7 +200,6 @@ export function renderChat(container) {
         }
         streamEl = null;
         streamContent = "";
-        statusEl.innerHTML = "";
         store.setBusy(connId, false);
         // Reload full history on final/aborted to pick up messages from other users
         // (their sent messages aren't broadcast, only visible in history)
@@ -218,7 +219,6 @@ export function renderChat(container) {
         streamEl = null;
         streamContent = "";
       }
-      statusEl.innerHTML = "";
     });
 
     chatUnsubs.push(chatUnsub);
@@ -288,7 +288,7 @@ export function renderChat(container) {
 
       if (useTeamRouting) {
         // Use team routing
-        await sendWithTeamRouting(messageText, messagesEl, statusEl);
+        await sendWithTeamRouting(messageText, messagesEl);
       } else {
         // Send only images as attachments, text content is in messageText
         await client.sendMessage("main", messageText, imageAttachments);
@@ -305,7 +305,7 @@ export function renderChat(container) {
     }
   }
 
-  async function sendWithTeamRouting(userMessage, messagesEl, statusEl) {
+  async function sendWithTeamRouting(userMessage, messagesEl) {
     // Build team context
     const teamContext = buildTeamContext(connId, subordinates);
     const fullPrompt = `${teamContext}\n\n用户任务：${userMessage}`;
