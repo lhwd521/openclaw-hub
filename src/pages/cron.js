@@ -282,7 +282,7 @@ async function loadRuns(client, jobId) {
   try {
     const result = await client.getCronRuns(jobId);
     console.log('[DEBUG] getCronRuns result:', result);
-    const runs = result?.runs || result?.items || [];
+    const runs = result?.runs || result?.items || result?.entries || [];
 
     if (runs.length === 0) {
       runsList.innerHTML = `<p style="color:var(--text-muted)">${t("cron.no_runs")}</p>`;
